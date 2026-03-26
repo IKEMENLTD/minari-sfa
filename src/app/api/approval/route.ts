@@ -1,0 +1,138 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { appendToDocument } from '@/lib/external/google-drive';
+import type { ApprovalRow, ApiResult } from '@/types';
+
+// ---------------------------------------------------------------------------
+// バリデーション
+// ---------------------------------------------------------------------------
+
+const approvalSchema = z.object({
+  meetingId: z.string().uuid(),
+  isCorrect: z.boolean(),
+  correctedCompany: z.string().optional(),
+  correctionNote: z.string().optional(),
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/approval - 承認処理
+// ---------------------------------------------------------------------------
+
+export async function POST(
+  request: NextRequest
+): Promise<NextResponse<ApiResult<ApprovalRow>>> {
+  try {
+    const body: unknown = await request.json();
+    const parsed = approvalSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { data: null, error: `入力値が不正です: ${parsed.error.issues.map((e: { message: string }) => e.message).join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    const { meetingId, isCorrect, correctedCompany, correctionNote } = parsed.data;
+    const supabase = createServerSupabaseClient();
+
+    // 対象の商談を取得
+    const { data: meeting, error: meetingError } = await supabase
+      .from('meetings')
+      .select('*')
+      .eq('id', meetingId)
+      .single();
+
+    if (meetingError || !meeting) {
+      return NextResponse.json(
+        { data: null, error: '指定された商談が見つかりません' },
+        { status: 404 }
+      );
+    }
+
+    const aiEstimatedCompany = meeting.ai_estimated_company ?? '';
+
+    // 承認レコードを作成
+    const { data: approval, error: approvalError } = await supabase
+      .from('approvals')
+      .insert({
+        meeting_id: meetingId,
+        ai_estimated_company: aiEstimatedCompany,
+        is_correct: isCorrect,
+        corrected_company: correctedCompany ?? null,
+        correction_note: correctionNote ?? null,
+      })
+      .select()
+      .single();
+
+    if (approvalError || !approval) {
+      return NextResponse.json(
+        { data: null, error: `承認レコードの作成に失敗しました: ${approvalError?.message}` },
+        { status: 500 }
+      );
+    }
+
+    // 商談の approval_status を更新
+    const { error: updateError } = await supabase
+      .from('meetings')
+      .update({
+        approval_status: 'approved',
+        approved_at: new Date().toISOString(),
+        // 企業名が修正された場合は ai_estimated_company も更新
+        ...(correctedCompany ? { ai_estimated_company: correctedCompany } : {}),
+      })
+      .eq('id', meetingId);
+
+    if (updateError) {
+      console.error('商談ステータスの更新に失敗しました:', updateError.message);
+    }
+
+    // Google ドキュメント追記トリガー（非同期で実行、失敗しても承認は成功とする）
+    // 企業に紐づく Google Doc がある場合に追記
+    const companyName = correctedCompany ?? aiEstimatedCompany;
+    if (companyName && companyName !== '(社内)') {
+      try {
+        // 企業の Google Doc を検索
+        const { data: companyData } = await supabase
+          .from('companies')
+          .select('id')
+          .eq('name', companyName)
+          .single();
+
+        if (companyData) {
+          const { data: googleDoc } = await supabase
+            .from('google_docs')
+            .select('doc_id')
+            .eq('company_id', companyData.id)
+            .single();
+
+          if (googleDoc) {
+            // 要約を取得して追記
+            const { data: summary } = await supabase
+              .from('summaries')
+              .select('summary_text')
+              .eq('meeting_id', meetingId)
+              .single();
+
+            const content = summary?.summary_text ?? `商談日: ${meeting.meeting_date}`;
+            await appendToDocument(googleDoc.doc_id, content);
+          }
+        }
+      } catch (docError) {
+        // Google Docs への追記失敗はログに記録するが、承認処理自体は成功とする
+        console.error('Google Docs 追記に失敗しました:', docError);
+      }
+    }
+
+    return NextResponse.json(
+      { data: approval as ApprovalRow, error: null },
+      { status: 201 }
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+    return NextResponse.json(
+      { data: null, error: `承認処理中にエラーが発生しました: ${message}` },
+      { status: 500 }
+    );
+  }
+}
