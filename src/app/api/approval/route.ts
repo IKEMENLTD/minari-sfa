@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth } from '@/lib/auth';
+import { validateAuth, validateContentType } from '@/lib/auth';
 import { appendToDocument } from '@/lib/external/google-drive';
 import type { ApprovalRow, ApiResult } from '@/types';
 
@@ -14,7 +14,7 @@ const approvalSchema = z.object({
   isCorrect: z.boolean(),
   correctedCompany: z.string().max(500).optional(),
   correctionNote: z.string().max(2000).optional(),
-});
+}).strict();
 
 // ---------------------------------------------------------------------------
 // POST /api/approval - 承認処理
@@ -23,8 +23,11 @@ const approvalSchema = z.object({
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<ApiResult<ApprovalRow>>> {
-  const authError = validateAuth(request);
-  if (authError) return authError as NextResponse<ApiResult<ApprovalRow>>;
+  const contentTypeError = validateContentType(request);
+  if (contentTypeError) return contentTypeError as NextResponse<ApiResult<ApprovalRow>>;
+
+  const authResult = await validateAuth(request);
+  if (authResult instanceof NextResponse) return authResult as NextResponse<ApiResult<ApprovalRow>>;
 
   try {
     const body: unknown = await request.json();
@@ -40,10 +43,25 @@ export async function POST(
     const { meetingId, isCorrect, correctedCompany, correctionNote } = parsed.data;
     const supabase = createServerSupabaseClient();
 
-    // 対象の商談を取得
+    // 既に承認済みかチェック（重複承認防止）
+    const { data: existingApproval } = await supabase
+      .from('approvals')
+      .select('id')
+      .eq('meeting_id', meetingId)
+      .limit(1)
+      .single();
+
+    if (existingApproval) {
+      return NextResponse.json(
+        { data: null, error: 'この商談は既に承認処理済みです' },
+        { status: 409 }
+      );
+    }
+
+    // 対象の商談を取得（承認処理に必要なフィールドのみ）
     const { data: meeting, error: meetingError } = await supabase
       .from('meetings')
-      .select('*')
+      .select('id, company_id, meeting_date, ai_estimated_company, approval_status')
       .eq('id', meetingId)
       .single();
 
@@ -56,7 +74,7 @@ export async function POST(
 
     const aiEstimatedCompany = meeting.ai_estimated_company ?? '';
 
-    // 承認レコードを作成
+    // 承認レコードを作成（approved_by にユーザーIDを記録）
     const { data: approval, error: approvalError } = await supabase
       .from('approvals')
       .insert({
@@ -65,6 +83,7 @@ export async function POST(
         is_correct: isCorrect,
         corrected_company: correctedCompany ?? null,
         correction_note: correctionNote ?? null,
+        approved_by: authResult.userId,
       })
       .select()
       .single();

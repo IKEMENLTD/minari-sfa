@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth } from '@/lib/auth';
+import { validateAuth, validateContentType } from '@/lib/auth';
+import { DEFAULT_PAGE_SIZE } from '@/lib/constants';
 import type { MeetingRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -19,7 +20,7 @@ const createMeetingSchema = z.object({
   is_internal: z.boolean(),
   ai_estimated_company: z.string().max(500).nullable().optional(),
   transcript_text: z.string().max(500_000).optional(),
-});
+}).strict();
 
 // ---------------------------------------------------------------------------
 // GET /api/meetings - 商談一覧
@@ -28,8 +29,8 @@ const createMeetingSchema = z.object({
 export async function GET(
   request: NextRequest
 ): Promise<NextResponse<ApiResult<MeetingRow[]>>> {
-  const authError = validateAuth(request);
-  if (authError) return authError as NextResponse<ApiResult<MeetingRow[]>>;
+  const authResult = await validateAuth(request);
+  if (authResult instanceof NextResponse) return authResult as NextResponse<ApiResult<MeetingRow[]>>;
 
   try {
     const supabase = createServerSupabaseClient();
@@ -37,6 +38,9 @@ export async function GET(
 
     const approvalStatus = searchParams.get('approval_status');
     const isInternal = searchParams.get('is_internal');
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE));
+    const offset = (page - 1) * limit;
 
     // クエリパラメータのバリデーション
     if (approvalStatus && !(VALID_APPROVAL_STATUSES as readonly string[]).includes(approvalStatus)) {
@@ -48,7 +52,7 @@ export async function GET(
 
     let query = supabase
       .from('meetings')
-      .select('*')
+      .select('id, company_id, meeting_date, participants, source, source_id, is_internal, ai_estimated_company, approval_status, approved_at, created_at')
       .order('meeting_date', { ascending: false });
 
     if (approvalStatus) {
@@ -58,6 +62,8 @@ export async function GET(
     if (isInternal !== null && isInternal !== undefined && isInternal !== '') {
       query = query.eq('is_internal', isInternal === 'true');
     }
+
+    query = query.range(offset, offset + limit - 1);
 
     const { data, error } = await query;
 
@@ -86,8 +92,11 @@ export async function GET(
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<ApiResult<MeetingRow>>> {
-  const authErrorPost = validateAuth(request);
-  if (authErrorPost) return authErrorPost as NextResponse<ApiResult<MeetingRow>>;
+  const contentTypeError = validateContentType(request);
+  if (contentTypeError) return contentTypeError as NextResponse<ApiResult<MeetingRow>>;
+
+  const authResult2 = await validateAuth(request);
+  if (authResult2 instanceof NextResponse) return authResult2 as NextResponse<ApiResult<MeetingRow>>;
 
   try {
     const body: unknown = await request.json();

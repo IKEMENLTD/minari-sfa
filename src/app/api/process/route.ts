@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth } from '@/lib/auth';
+import { validateAuth, isAuthError, requireRole, validateContentType } from '@/lib/auth';
 import { fetchNewTranscripts } from '@/lib/external/jamroll';
 import { fetchProudNoteFiles } from '@/lib/external/google-drive';
 import { summarizeMeeting } from '@/lib/external/claude';
@@ -24,15 +24,54 @@ interface ProcessResult {
 }
 
 // ---------------------------------------------------------------------------
+// インメモリレート制限（本番では Redis ベースに置き換えること）
+// ---------------------------------------------------------------------------
+
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1分
+const RATE_LIMIT_MAX_REQUESTS = 3; // 1分あたり最大3回
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(userId);
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+
+  entry.count++;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/process - 議事録処理トリガー
-// TODO: レート制限の実装が必要。Claude API 呼び出しを含む重い処理のため、
-// 大量リクエストによるDoS攻撃や意図しない課金を防ぐ仕組みが必要。
-// 本番環境では upstash/ratelimit 等のミドルウェアを導入すること。
+// admin / manager のみ実行可能。レート制限あり。
 // ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest): Promise<NextResponse<ApiResult<ProcessResult>>> {
-  const authError = validateAuth(request);
-  if (authError) return authError as NextResponse<ApiResult<ProcessResult>>;
+  const contentTypeError = validateContentType(request);
+  if (contentTypeError) return contentTypeError as NextResponse<ApiResult<ProcessResult>>;
+
+  const authResult = await validateAuth(request);
+  if (isAuthError(authResult)) return authResult as NextResponse<ApiResult<ProcessResult>>;
+
+  // ロールチェック: admin または manager のみ
+  const roleError = requireRole(authResult, ['admin', 'manager']);
+  if (roleError) return roleError as NextResponse<ApiResult<ProcessResult>>;
+
+  // レート制限チェック
+  if (!checkRateLimit(authResult.userId)) {
+    return NextResponse.json(
+      { data: null, error: 'リクエスト回数の上限に達しました。しばらく待ってから再試行してください。' },
+      { status: 429 }
+    );
+  }
 
   try {
     const supabase = createServerSupabaseClient();

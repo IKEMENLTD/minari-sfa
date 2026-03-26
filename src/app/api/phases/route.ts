@@ -8,15 +8,15 @@ import type { SalesPhaseRow, ApiResult } from '@/types';
 // ---------------------------------------------------------------------------
 
 export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<SalesPhaseRow[]>>> {
-  const authError = validateAuth(request);
-  if (authError) return authError as NextResponse<ApiResult<SalesPhaseRow[]>>;
+  const authResult = await validateAuth(request);
+  if (authResult instanceof NextResponse) return authResult as NextResponse<ApiResult<SalesPhaseRow[]>>;
 
   try {
     const supabase = createServerSupabaseClient();
 
     const { data, error } = await supabase
       .from('sales_phases')
-      .select('*')
+      .select('id, phase_name, phase_order, description, created_at')
       .order('phase_order', { ascending: true });
 
     if (error) {

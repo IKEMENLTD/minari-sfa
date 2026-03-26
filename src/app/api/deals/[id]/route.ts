@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth } from '@/lib/auth';
+import { validateAuth, validateContentType } from '@/lib/auth';
 import type { DealWithDetails, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -15,7 +15,7 @@ const updateDealStatusSchema = z.object({
   next_action: z.string().max(500).optional(),
   status_summary: z.string().max(2000).optional(),
   last_meeting_date: z.string().date().optional(),
-});
+}).strict();
 
 // ---------------------------------------------------------------------------
 // GET /api/deals/[id] - 案件詳細
@@ -25,8 +25,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResult<DealWithDetails>>> {
-  const authError = validateAuth(request);
-  if (authError) return authError as NextResponse<ApiResult<DealWithDetails>>;
+  const authResult = await validateAuth(request);
+  if (authResult instanceof NextResponse) return authResult as NextResponse<ApiResult<DealWithDetails>>;
 
   try {
     const { id } = await params;
@@ -88,8 +88,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResult<DealWithDetails>>> {
-  const authError = validateAuth(request);
-  if (authError) return authError as NextResponse<ApiResult<DealWithDetails>>;
+  const contentTypeError = validateContentType(request);
+  if (contentTypeError) return contentTypeError as NextResponse<ApiResult<DealWithDetails>>;
+
+  const authResult2 = await validateAuth(request);
+  if (authResult2 instanceof NextResponse) return authResult2 as NextResponse<ApiResult<DealWithDetails>>;
 
   try {
     const { id } = await params;
