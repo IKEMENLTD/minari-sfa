@@ -7,11 +7,6 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  experimental: {
-    serverActions: {
-      bodySizeLimit: "1mb",
-    },
-  },
   headers: async () => [
     {
       source: "/(.*)",
