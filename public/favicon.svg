@@ -1,0 +1,11 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="32" height="32" rx="6" fill="#2563eb"/>
+  <!-- Back card outline -->
+  <rect x="5" y="4" width="14" height="19" rx="1.5" fill="white" opacity="0.25"/>
+  <!-- Front card -->
+  <rect x="10" y="7" width="14" height="19" rx="1.5" fill="white" opacity="0.9"/>
+  <!-- Bar chart -->
+  <rect x="13" y="16" width="2.5" height="7" rx="0.5" fill="#2563eb"/>
+  <rect x="17" y="13" width="2.5" height="10" rx="0.5" fill="#2563eb"/>
+  <rect x="21" y="10" width="2.5" height="13" rx="0.5" fill="#2563eb"/>
+</svg>

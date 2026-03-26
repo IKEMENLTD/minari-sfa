@@ -4,7 +4,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 
 export const metadata: Metadata = {
-  title: 'INTERCONNECT',
+  title: 'SALES DECK',
   description: '営業インテリジェンス プラットフォーム',
 };
 
@@ -15,6 +15,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
+      <head>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+      </head>
       <body className="flex min-h-screen">
         <Sidebar />
         <div className="flex flex-1 flex-col">

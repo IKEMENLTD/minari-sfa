@@ -12,6 +12,7 @@ import {
   Menu,
   X,
 } from 'lucide-react';
+import { Logo } from './logo';
 
 interface NavItem {
   href: string;
@@ -65,14 +66,7 @@ function Sidebar() {
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-60 md:flex-col md:border-r md:border-border md:bg-surface md:min-h-screen">
         <div className="border-b border-border px-5 py-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent">
-              <span className="text-xs font-bold text-white">IC</span>
-            </div>
-            <span className="text-sm font-semibold text-text tracking-tight uppercase">
-              Interconnect
-            </span>
-          </div>
+          <Logo size={28} />
         </div>
         {navContent}
       </aside>
@@ -100,14 +94,7 @@ function Sidebar() {
           />
           <aside className="fixed inset-y-0 left-0 z-40 w-60 border-r border-border bg-surface md:hidden">
             <div className="border-b border-border px-5 py-4">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent">
-                  <span className="text-xs font-bold text-white">IC</span>
-                </div>
-                <span className="text-sm font-semibold text-text tracking-tight uppercase">
-                  Interconnect
-                </span>
-              </div>
+              <Logo size={28} />
             </div>
             {navContent}
           </aside>
