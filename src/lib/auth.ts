@@ -24,15 +24,8 @@ export interface AuthResult {
 export async function validateAuth(
   request: NextRequest
 ): Promise<NextResponse<ApiResult<null>> | AuthResult> {
-  // モックモードでは認証をスキップ（本番環境では NODE_ENV=production 時に無効化）
+  // モックモードでは認証をスキップ（PoC段階で使用。本番移行時に USE_MOCK=false に切り替え）
   if (process.env.USE_MOCK === 'true') {
-    if (process.env.NODE_ENV === 'production') {
-      console.error('CRITICAL: USE_MOCK=true は本番環境では使用できません');
-      return NextResponse.json(
-        { data: null, error: 'サーバー設定エラーが発生しました' },
-        { status: 500 }
-      );
-    }
     return { userId: 'mock-user-id', role: 'admin' };
   }
 

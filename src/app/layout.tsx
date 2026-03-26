@@ -4,8 +4,8 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 
 export const metadata: Metadata = {
-  title: '森井システム',
-  description: '営業業務効率化ツール',
+  title: 'INTERCONNECT',
+  description: '営業インテリジェンス プラットフォーム',
 };
 
 export default function RootLayout({
