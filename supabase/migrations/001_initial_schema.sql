@@ -122,3 +122,24 @@ CREATE INDEX IF NOT EXISTS idx_approvals_meeting_id ON approvals(meeting_id);
 CREATE INDEX IF NOT EXISTS idx_deal_statuses_company_id ON deal_statuses(company_id);
 CREATE INDEX IF NOT EXISTS idx_person_company_company_id ON person_company(company_id);
 CREATE INDEX IF NOT EXISTS idx_person_company_person_name ON person_company(person_name);
+
+-- =============================================================================
+-- RLS (Row Level Security) ポリシー
+-- 本番移行時に ALTER TABLE ... ENABLE ROW LEVEL SECURITY; を実行すること
+-- =============================================================================
+
+-- transcripts テーブル: 機密性の高い議事録全文を保護
+-- 認証済みユーザーのみ読み取り可能
+-- ALTER TABLE transcripts ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "authenticated_read_transcripts" ON transcripts FOR SELECT TO authenticated USING (true);
+-- CREATE POLICY "service_role_all_transcripts" ON transcripts FOR ALL TO service_role USING (true);
+
+-- meetings テーブル
+-- ALTER TABLE meetings ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "authenticated_read_meetings" ON meetings FOR SELECT TO authenticated USING (true);
+-- CREATE POLICY "service_role_all_meetings" ON meetings FOR ALL TO service_role USING (true);
+
+-- companies テーブル
+-- ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "authenticated_read_companies" ON companies FOR SELECT TO authenticated USING (true);
+-- CREATE POLICY "service_role_all_companies" ON companies FOR ALL TO service_role USING (true);
