@@ -53,17 +53,21 @@ export async function GET(
       );
     }
 
-    // transcript を取得（full_text は大量データのため、必要な場合のみ返す）
+    // transcript を取得
     const includeFullText = new URL(request.url).searchParams.get('include_transcript') === 'true';
-    const transcriptColumns = includeFullText
-      ? 'id, meeting_id, full_text, source, created_at'
-      : 'id, meeting_id, source, created_at';
     const { data: transcripts } = await supabase
       .from('transcripts')
-      .select(transcriptColumns)
+      .select('id, meeting_id, full_text, source, created_at')
       .eq('meeting_id', id)
       .order('created_at', { ascending: false })
       .limit(1);
+
+    // full_textが不要な場合は除去
+    const transcript = transcripts?.[0]
+      ? includeFullText
+        ? transcripts[0]
+        : { ...transcripts[0], full_text: '' }
+      : null;
 
     // summary を取得
     const { data: summaries } = await supabase
@@ -86,7 +90,7 @@ export async function GET(
 
     const detail: MeetingDetail = {
       ...meeting,
-      transcript: transcripts?.[0] ?? null,
+      transcript,
       summary: summaries?.[0] ?? null,
       company,
     };

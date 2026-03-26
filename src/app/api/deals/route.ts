@@ -37,20 +37,24 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
       );
     }
 
-    const deals: DealWithDetails[] = (data ?? []).map((row) => ({
-      deal_status: {
-        id: row.id,
-        company_id: row.company_id,
-        current_phase_id: row.current_phase_id,
-        next_action: row.next_action,
-        status_summary: row.status_summary,
-        last_meeting_date: row.last_meeting_date,
-        updated_at: row.updated_at,
-        created_at: row.created_at,
-      },
-      company: row.companies,
-      phase: row.sales_phases,
-    }));
+    const deals: DealWithDetails[] = (data ?? []).map((row) => {
+      const company = Array.isArray(row.companies) ? row.companies[0] : row.companies;
+      const phase = Array.isArray(row.sales_phases) ? row.sales_phases[0] : row.sales_phases;
+      return {
+        deal_status: {
+          id: row.id,
+          company_id: row.company_id,
+          current_phase_id: row.current_phase_id,
+          next_action: row.next_action,
+          status_summary: row.status_summary,
+          last_meeting_date: row.last_meeting_date,
+          updated_at: row.updated_at,
+          created_at: row.created_at,
+        },
+        company: company as DealWithDetails['company'],
+        phase: phase as DealWithDetails['phase'],
+      };
+    });
 
     return NextResponse.json({ data: deals, error: null });
   } catch (err) {
