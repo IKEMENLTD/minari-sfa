@@ -13,13 +13,13 @@ const meetingSummarySchema = z.object({
   estimatedCompany: z.string(),
   participants: z.array(z.string()),
   isInternal: z.boolean(),
-});
+}).strict();
 
 const salesPhaseJudgmentSchema = z.object({
   phaseId: z.string(),
   nextAction: z.string(),
   statusSummary: z.string(),
-});
+}).strict();
 
 // ---------------------------------------------------------------------------
 // Claude API 連携
