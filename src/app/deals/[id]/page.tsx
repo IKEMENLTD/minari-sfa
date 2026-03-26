@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { ChevronRight } from 'lucide-react';
 import { DealCard } from '@/components/deals/deal-card';
 import type { DealWithDetails, SalesPhaseRow, ApiResult } from '@/types';
@@ -12,9 +13,18 @@ async function getDeal(id: string): Promise<DealPageData | null> {
   try {
     // NOTE: 本番環境では必ず NEXT_PUBLIC_BASE_URL を https:// で設定すること
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+
+    // SSR 内部 fetch: クライアントの認証情報をそのまま転送する
+    const headerStore = await headers();
+    const authorization = headerStore.get('authorization') ?? '';
+    const cookie = headerStore.get('cookie') ?? '';
+    const fetchHeaders: Record<string, string> = {};
+    if (authorization) fetchHeaders['Authorization'] = authorization;
+    if (cookie) fetchHeaders['Cookie'] = cookie;
+
     const [dealRes, phasesRes] = await Promise.all([
-      fetch(`${baseUrl}/api/deals/${id}`, { cache: 'no-store' }),
-      fetch(`${baseUrl}/api/phases`, { cache: 'no-store' }),
+      fetch(`${baseUrl}/api/deals/${id}`, { cache: 'no-store', headers: fetchHeaders }),
+      fetch(`${baseUrl}/api/phases`, { cache: 'no-store', headers: fetchHeaders }),
     ]);
     if (!dealRes.ok || !phasesRes.ok) return null;
     const dealJson: ApiResult<DealWithDetails> = await dealRes.json();

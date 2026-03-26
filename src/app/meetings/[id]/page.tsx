@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { ChevronRight } from 'lucide-react';
 import { MeetingDetailView } from '@/components/meetings/meeting-detail';
 import type { MeetingDetail, ApiResult } from '@/types';
@@ -7,8 +8,18 @@ async function getMeeting(id: string): Promise<MeetingDetail | null> {
   try {
     // NOTE: 本番環境では必ず NEXT_PUBLIC_BASE_URL を https:// で設定すること
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+
+    // SSR 内部 fetch: クライアントの認証情報をそのまま転送する
+    const headerStore = await headers();
+    const authorization = headerStore.get('authorization') ?? '';
+    const cookie = headerStore.get('cookie') ?? '';
+    const fetchHeaders: Record<string, string> = {};
+    if (authorization) fetchHeaders['Authorization'] = authorization;
+    if (cookie) fetchHeaders['Cookie'] = cookie;
+
     const res = await fetch(`${baseUrl}/api/meetings/${id}`, {
       cache: 'no-store',
+      headers: fetchHeaders,
     });
     if (!res.ok) return null;
     const json: ApiResult<MeetingDetail> = await res.json();
