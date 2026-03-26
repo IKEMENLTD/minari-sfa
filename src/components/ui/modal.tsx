@@ -44,23 +44,25 @@ function Modal({ open, onClose, title, children, footer, className }: ModalProps
       <div
         role="dialog"
         aria-modal="true"
+        aria-labelledby={title ? 'modal-title' : undefined}
         className={clsx(
           'relative z-50 w-full max-w-lg rounded-md border border-border bg-surface shadow-lg',
           className,
         )}
       >
-        {title && (
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
-            <h2 className="text-base font-semibold text-text">{title}</h2>
-            <button
-              onClick={onClose}
-              className="rounded-md p-1 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
-              aria-label="閉じる"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          {title && (
+            <h2 id="modal-title" className="text-base font-semibold text-text">{title}</h2>
+          )}
+          {!title && <div />}
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
+            aria-label="閉じる"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
         <div className="px-5 py-4">{children}</div>
         {footer && (
           <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">

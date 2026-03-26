@@ -7,8 +7,10 @@ interface SkeletonProps {
 function Skeleton({ className }: SkeletonProps) {
   return (
     <div
+      role="status"
+      aria-label="読み込み中"
       className={clsx(
-        'animate-pulse rounded-md bg-gray-200',
+        'animate-pulse rounded-md bg-muted-hover',
         className,
       )}
     />

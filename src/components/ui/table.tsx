@@ -85,6 +85,8 @@ function SortableHeader({
         ? ChevronDown
         : ChevronsUpDown;
 
+  const ariaSort = sortDirection === 'asc' ? 'ascending' : sortDirection === 'desc' ? 'descending' : undefined;
+
   return (
     <th
       className={clsx(
@@ -93,6 +95,7 @@ function SortableHeader({
         className,
       )}
       onClick={onSort}
+      aria-sort={ariaSort}
       {...props}
     >
       <span className="inline-flex items-center gap-1">

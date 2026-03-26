@@ -110,7 +110,7 @@ function ApprovalCard({ meeting, companies, onApprove }: ApprovalCardProps) {
       ) : (
         <CardFooter>
           <Button
-            variant="ghost"
+            variant="danger"
             size="sm"
             onClick={handleReject}
           >

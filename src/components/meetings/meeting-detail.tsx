@@ -91,6 +91,7 @@ function MeetingDetailView({ meeting }: MeetingDetailProps) {
         <Card>
           <button
             onClick={() => setTranscriptOpen(!transcriptOpen)}
+            aria-expanded={transcriptOpen}
             className="flex w-full items-center gap-2 px-5 py-4 text-left"
           >
             {transcriptOpen ? (
