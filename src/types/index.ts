@@ -185,8 +185,8 @@ export interface MeetingDetail extends MeetingRow {
 /** 案件一覧用（company + deal_status + phase JOIN） */
 export interface DealWithDetails {
   deal_status: DealStatusRow;
-  company: CompanyRow;
-  phase: SalesPhaseRow;
+  company: CompanyRow | null;
+  phase: SalesPhaseRow | null;
 }
 
 // ---------------------------------------------------------------------------

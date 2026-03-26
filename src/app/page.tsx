@@ -259,18 +259,18 @@ export default function DashboardPage() {
                         href={`/deals/${d.deal_status.id}`}
                         className="text-accent hover:underline font-medium"
                       >
-                        {d.company.name}
+                        {d.company?.name ?? '未登録'}
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="info">{d.phase.phase_name}</Badge>
+                      <Badge variant="info">{d.phase?.phase_name ?? '未設定'}</Badge>
                     </TableCell>
                     <TableCell>
                       <span className="truncate max-w-[200px] inline-block">
                         {d.deal_status.next_action || '-'}
                       </span>
                     </TableCell>
-                    <TableCell>{d.company.assigned_to || '-'}</TableCell>
+                    <TableCell>{d.company?.assigned_to || '-'}</TableCell>
                   </TableRow>
                 ))
               ) : (

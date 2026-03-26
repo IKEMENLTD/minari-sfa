@@ -12,6 +12,9 @@
   "author": "",
   "license": "ISC",
   "description": "",
+  "engines": {
+    "node": ">=18.18.0"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.0",
     "@tailwindcss/postcss": "^4.2.2",

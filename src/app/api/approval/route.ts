@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
-import { appendToDocument } from '@/lib/external/google-drive';
+import { appendToDocument, createDocument } from '@/lib/external/google-drive';
+import { judgeSalesPhase } from '@/lib/external/claude';
 import type { ApprovalRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -15,6 +16,12 @@ const approvalSchema = z.object({
   correctedCompany: z.string().max(500).optional(),
   correctionNote: z.string().max(2000).optional(),
 }).strict();
+
+// ---------------------------------------------------------------------------
+// Google Drive フォルダ ID（環境変数から取得）
+// ---------------------------------------------------------------------------
+
+const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID ?? '';
 
 // ---------------------------------------------------------------------------
 // POST /api/approval - 承認処理
@@ -107,56 +114,193 @@ export async function POST(
       );
     }
 
-    // 商談の approval_status を更新
+    // 確定企業名を決定
+    const confirmedCompanyName = correctedCompany ?? aiEstimatedCompany;
+
+    // --- 企業登録 + company_id 紐付け ---
+    let companyId: string | null = null;
+
+    if (confirmedCompanyName && confirmedCompanyName !== '(社内)') {
+      // 企業名で検索
+      const { data: existingCompany } = await supabase
+        .from('companies')
+        .select('id')
+        .eq('name', confirmedCompanyName)
+        .single();
+
+      if (existingCompany) {
+        companyId = existingCompany.id as string;
+      } else {
+        // 新規企業を作成
+        const { data: newCompany, error: companyInsertError } = await supabase
+          .from('companies')
+          .insert({ name: confirmedCompanyName })
+          .select('id')
+          .single();
+
+        if (companyInsertError || !newCompany) {
+          console.error('企業の作成に失敗しました:', companyInsertError?.message);
+        } else {
+          companyId = newCompany.id as string;
+
+          // 新規企業の場合、Googleドキュメントも自動作成
+          if (GOOGLE_DRIVE_FOLDER_ID) {
+            try {
+              const docResult = await createDocument(confirmedCompanyName, GOOGLE_DRIVE_FOLDER_ID);
+              await supabase.from('google_docs').insert({
+                company_id: companyId,
+                doc_url: docResult.docUrl,
+                doc_id: docResult.docId,
+                folder: GOOGLE_DRIVE_FOLDER_ID,
+              });
+            } catch (docCreateErr) {
+              const errMsg = docCreateErr instanceof Error ? docCreateErr.message : '不明なエラー';
+              console.error('Google Docs 作成に失敗しました:', errMsg);
+            }
+          }
+        }
+      }
+    }
+
+    // 商談の approval_status と company_id を更新
+    const meetingUpdateData: Record<string, string> = {
+      approval_status: 'approved',
+      approved_at: new Date().toISOString(),
+    };
+    if (correctedCompany) {
+      meetingUpdateData.ai_estimated_company = correctedCompany;
+    }
+    if (companyId) {
+      meetingUpdateData.company_id = companyId;
+    }
+
     const { error: updateError } = await supabase
       .from('meetings')
-      .update({
-        approval_status: 'approved',
-        approved_at: new Date().toISOString(),
-        // 企業名が修正された場合は ai_estimated_company も更新
-        ...(correctedCompany ? { ai_estimated_company: correctedCompany } : {}),
-      })
+      .update(meetingUpdateData)
       .eq('id', meetingId);
 
     if (updateError) {
       console.error('商談ステータスの更新に失敗しました:', updateError.message);
+      return NextResponse.json(
+        { data: null, error: '商談ステータスの更新に失敗しました' },
+        { status: 500 }
+      );
     }
 
-    // Google ドキュメント追記トリガー（非同期で実行、失敗しても承認は成功とする）
-    // 企業に紐づく Google Doc がある場合に追記
-    const companyName = correctedCompany ?? aiEstimatedCompany;
-    if (companyName && companyName !== '(社内)') {
+    // --- Google ドキュメント追記 ---
+    if (companyId && confirmedCompanyName !== '(社内)') {
       try {
-        // 企業の Google Doc を検索
-        const { data: companyData } = await supabase
-          .from('companies')
-          .select('id')
-          .eq('name', companyName)
+        const { data: googleDoc } = await supabase
+          .from('google_docs')
+          .select('doc_id')
+          .eq('company_id', companyId)
           .single();
 
-        if (companyData) {
-          const { data: googleDoc } = await supabase
-            .from('google_docs')
-            .select('doc_id')
-            .eq('company_id', companyData.id)
+        if (googleDoc) {
+          const { data: summary } = await supabase
+            .from('summaries')
+            .select('summary_text')
+            .eq('meeting_id', meetingId)
             .single();
 
-          if (googleDoc) {
-            // 要約を取得して追記
-            const { data: summary } = await supabase
-              .from('summaries')
-              .select('summary_text')
-              .eq('meeting_id', meetingId)
-              .single();
-
-            const content = summary?.summary_text ?? `商談日: ${meeting.meeting_date}`;
-            await appendToDocument(googleDoc.doc_id, content);
-          }
+          const content = summary?.summary_text ?? `商談日: ${meeting.meeting_date as string}`;
+          await appendToDocument(googleDoc.doc_id as string, content);
         }
       } catch (docError) {
-        // Google Docs への追記失敗はログに記録するが、承認処理自体は成功とする
         const docErrMsg = docError instanceof Error ? docError.message : '不明なエラー';
         console.error('Google Docs 追記に失敗しました:', docErrMsg);
+      }
+    }
+
+    // --- フェーズ判定 + deal_statuses UPSERT ---
+    if (companyId) {
+      try {
+        // 該当企業の全承認済み議事録のsummary_textを収集
+        const { data: companyMeetings } = await supabase
+          .from('meetings')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('approval_status', 'approved');
+
+        if (companyMeetings && companyMeetings.length > 0) {
+          const meetingIds = companyMeetings.map((m) => m.id as string);
+          const { data: summaries } = await supabase
+            .from('summaries')
+            .select('summary_text')
+            .in('meeting_id', meetingIds);
+
+          const summaryTexts = (summaries ?? []).map((s) => s.summary_text as string);
+
+          if (summaryTexts.length > 0) {
+            const judgment = await judgeSalesPhase(summaryTexts);
+
+            // sales_phasesテーブルからphase_nameで検索してcurrent_phase_idを取得
+            const { data: phaseData } = await supabase
+              .from('sales_phases')
+              .select('id')
+              .eq('id', judgment.phaseId)
+              .single();
+
+            // phaseIdで見つからない場合はphase_nameで検索
+            let phaseId: string | null = phaseData?.id as string | null;
+            if (!phaseId) {
+              const { data: phaseByName } = await supabase
+                .from('sales_phases')
+                .select('id')
+                .eq('phase_name', judgment.phaseId)
+                .single();
+              phaseId = phaseByName?.id as string | null;
+            }
+
+            if (phaseId) {
+              // 最終商談日を取得
+              const { data: latestMeeting } = await supabase
+                .from('meetings')
+                .select('meeting_date')
+                .eq('company_id', companyId)
+                .eq('approval_status', 'approved')
+                .order('meeting_date', { ascending: false })
+                .limit(1)
+                .single();
+
+              const lastMeetingDate = (latestMeeting?.meeting_date as string) ?? null;
+
+              // deal_statuses UPSERT: 既存なら更新、なければ新規作成
+              const { data: existingDeal } = await supabase
+                .from('deal_statuses')
+                .select('id')
+                .eq('company_id', companyId)
+                .single();
+
+              if (existingDeal) {
+                await supabase
+                  .from('deal_statuses')
+                  .update({
+                    current_phase_id: phaseId,
+                    next_action: judgment.nextAction,
+                    status_summary: judgment.statusSummary,
+                    last_meeting_date: lastMeetingDate,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', existingDeal.id);
+              } else {
+                await supabase
+                  .from('deal_statuses')
+                  .insert({
+                    company_id: companyId,
+                    current_phase_id: phaseId,
+                    next_action: judgment.nextAction,
+                    status_summary: judgment.statusSummary,
+                    last_meeting_date: lastMeetingDate,
+                  });
+              }
+            }
+          }
+        }
+      } catch (phaseError) {
+        const phaseErrMsg = phaseError instanceof Error ? phaseError.message : '不明なエラー';
+        console.error('フェーズ判定に失敗しました:', phaseErrMsg);
+        // フェーズ判定失敗は承認処理自体には影響させない
       }
     }
 

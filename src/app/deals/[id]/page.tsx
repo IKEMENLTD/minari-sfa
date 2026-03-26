@@ -63,7 +63,7 @@ export default async function DealDetailPage({
           案件管理
         </Link>
         <ChevronRight className="h-3.5 w-3.5" />
-        <span className="text-text">{data.deal.company.name}</span>
+        <span className="text-text">{data.deal.company?.name ?? '未登録'}</span>
       </nav>
 
       <div className="max-w-xl">

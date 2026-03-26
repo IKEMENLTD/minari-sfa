@@ -11,17 +11,20 @@ interface DealCardProps {
 
 function DealCard({ deal, allPhases }: DealCardProps) {
   const totalPhases = allPhases.length || 5;
-  const currentOrder = deal.phase.phase_order;
+  const currentOrder = deal.phase?.phase_order ?? 0;
   const progressPercent = Math.round((currentOrder / totalPhases) * 100);
+  const companyName = deal.company?.name ?? '未登録';
+  const phaseName = deal.phase?.phase_name ?? '未設定';
+  const phaseOrder = deal.phase?.phase_order ?? 0;
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-text">{deal.company.name}</h3>
+          <h3 className="text-sm font-semibold text-text">{companyName}</h3>
           <PhaseBadge
-            phaseName={deal.phase.phase_name}
-            phaseOrder={deal.phase.phase_order}
+            phaseName={phaseName}
+            phaseOrder={phaseOrder}
             totalPhases={totalPhases}
           />
         </div>
@@ -71,13 +74,15 @@ function DealCard({ deal, allPhases }: DealCardProps) {
         )}
 
         {/* 議事録リンク */}
-        <Link
-          href={`/meetings?company=${deal.company.id}`}
-          className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
-        >
-          関連議事録を見る
-          <ArrowRight className="h-3 w-3" />
-        </Link>
+        {deal.company && (
+          <Link
+            href={`/meetings?company=${deal.company.id}`}
+            className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+          >
+            関連議事録を見る
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+        )}
       </CardContent>
     </Card>
   );

@@ -44,13 +44,13 @@ function DealList({ deals }: DealListProps) {
                 href={`/deals/${deal.deal_status.id}`}
                 className="text-accent hover:underline font-medium"
               >
-                {deal.company.name}
+                {deal.company?.name ?? '未登録'}
               </Link>
             </TableCell>
             <TableCell>
               <PhaseBadge
-                phaseName={deal.phase.phase_name}
-                phaseOrder={deal.phase.phase_order}
+                phaseName={deal.phase?.phase_name ?? '未設定'}
+                phaseOrder={deal.phase?.phase_order ?? 0}
               />
             </TableCell>
             <TableCell>
@@ -63,7 +63,7 @@ function DealList({ deals }: DealListProps) {
                 ? new Date(deal.deal_status.last_meeting_date).toLocaleDateString('ja-JP')
                 : '-'}
             </TableCell>
-            <TableCell>{deal.company.assigned_to || '-'}</TableCell>
+            <TableCell>{deal.company?.assigned_to || '-'}</TableCell>
           </TableRow>
         ))}
       </TableBody>

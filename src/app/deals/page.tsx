@@ -33,7 +33,7 @@ export default function DealsPage() {
   }, []);
 
   const filtered = deals.filter((d) =>
-    d.company.name.toLowerCase().includes(search.toLowerCase()),
+    (d.company?.name ?? '').toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
