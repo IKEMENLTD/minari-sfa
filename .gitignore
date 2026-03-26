@@ -2,3 +2,21 @@ node_modules/
 .next/
 .env
 .env.local
+
+# Build artifacts
+tsconfig.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+
+# Dev docs (not for production)
+PLAN.md
