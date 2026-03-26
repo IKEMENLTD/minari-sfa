@@ -18,7 +18,7 @@ export default function ApprovalPage() {
       setError(null);
       try {
         const [meetingsRes, companiesRes] = await Promise.all([
-          fetch('/api/meetings?status=pending'),
+          fetch('/api/meetings?approval_status=pending'),
           fetch('/api/companies'),
         ]);
         if (!meetingsRes.ok || !companiesRes.ok) {

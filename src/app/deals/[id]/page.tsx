@@ -15,7 +15,7 @@ async function getDeal(id: string): Promise<DealPageData | null> {
       fetch(`${baseUrl}/api/deals/${id}`, { cache: 'no-store' }),
       fetch(`${baseUrl}/api/phases`, { cache: 'no-store' }),
     ]);
-    if (!dealRes.ok) return null;
+    if (!dealRes.ok || !phasesRes.ok) return null;
     const dealJson: ApiResult<DealWithDetails> = await dealRes.json();
     const phasesJson: ApiResult<SalesPhaseRow[]> = await phasesRes.json();
     if (dealJson.error !== null || phasesJson.error !== null) return null;

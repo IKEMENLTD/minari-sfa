@@ -29,7 +29,7 @@ export default function MeetingsPage() {
       setError(null);
       try {
         const params = new URLSearchParams();
-        if (statusFilter) params.set('status', statusFilter);
+        if (statusFilter) params.set('approval_status', statusFilter);
         const res = await fetch(`/api/meetings?${params.toString()}`);
         if (!res.ok) throw new Error('データの取得に失敗しました');
         const json: { data: MeetingRow[] } = await res.json();
