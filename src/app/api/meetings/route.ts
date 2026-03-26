@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth, validateContentType } from '@/lib/auth';
+import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
 import { DEFAULT_PAGE_SIZE } from '@/lib/constants';
 import type { MeetingRow, ApiResult } from '@/types';
 
@@ -96,7 +96,11 @@ export async function POST(
   if (contentTypeError) return contentTypeError as NextResponse<ApiResult<MeetingRow>>;
 
   const authResult2 = await validateAuth(request);
-  if (authResult2 instanceof NextResponse) return authResult2 as NextResponse<ApiResult<MeetingRow>>;
+  if (isAuthError(authResult2)) return authResult2 as NextResponse<ApiResult<MeetingRow>>;
+
+  // ロールチェック: admin または manager のみ商談作成可能
+  const roleError = requireRole(authResult2, ['admin', 'manager']);
+  if (roleError) return roleError as NextResponse<ApiResult<MeetingRow>>;
 
   try {
     const body: unknown = await request.json();
@@ -116,7 +120,7 @@ export async function POST(
     const { data: meeting, error: meetingError } = await supabase
       .from('meetings')
       .insert(meetingData)
-      .select()
+      .select('id, company_id, meeting_date, participants, source, source_id, is_internal, ai_estimated_company, approval_status, approved_at, created_at')
       .single();
 
     if (meetingError || !meeting) {

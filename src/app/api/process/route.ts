@@ -24,16 +24,40 @@ interface ProcessResult {
 }
 
 // ---------------------------------------------------------------------------
-// インメモリレート制限（本番では Redis ベースに置き換えること）
+// インメモリレート制限
+// WARNING: サーバーレス環境（Vercel等）ではプロセス再起動でリセットされるため、
+// 本番では必ず Redis / Upstash 等の外部ストアに置き換えること。
 // ---------------------------------------------------------------------------
 
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1分
 const RATE_LIMIT_MAX_REQUESTS = 3; // 1分あたり最大3回
+const RATE_LIMIT_MAP_MAX_SIZE = 10_000; // メモリリーク防止
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
+/** 最後にクリーンアップを実行したタイムスタンプ */
+let lastCleanup = Date.now();
+const CLEANUP_INTERVAL_MS = 30_000; // 30秒ごとにクリーンアップ
+
 function checkRateLimit(userId: string): boolean {
   const now = Date.now();
+
+  // メモリリーク防止: 定期的に期限切れエントリを削除（30秒ごと or サイズ超過時）
+  if (now - lastCleanup > CLEANUP_INTERVAL_MS || rateLimitMap.size > RATE_LIMIT_MAP_MAX_SIZE) {
+    for (const [key, val] of rateLimitMap) {
+      if (now > val.resetAt) {
+        rateLimitMap.delete(key);
+      }
+    }
+    lastCleanup = now;
+
+    // クリーンアップ後もサイズ超過の場合は全クリア（異常事態）
+    if (rateLimitMap.size > RATE_LIMIT_MAP_MAX_SIZE) {
+      console.warn(`レート制限Map異常膨張: ${rateLimitMap.size}件。全クリアします。`);
+      rateLimitMap.clear();
+    }
+  }
+
   const entry = rateLimitMap.get(userId);
 
   if (!entry || now > entry.resetAt) {
@@ -126,7 +150,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
             ai_estimated_company: analysis.estimatedCompany,
             approval_status: 'pending' as const,
           })
-          .select()
+          .select('id, company_id, meeting_date, participants, source, source_id, is_internal, ai_estimated_company, approval_status, approved_at, created_at')
           .single();
 
         if (meetingError || !meeting) {
@@ -193,7 +217,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
             ai_estimated_company: analysis.estimatedCompany,
             approval_status: 'pending' as const,
           })
-          .select()
+          .select('id, company_id, meeting_date, participants, source, source_id, is_internal, ai_estimated_company, approval_status, approved_at, created_at')
           .single();
 
         if (meetingError || !meeting) {

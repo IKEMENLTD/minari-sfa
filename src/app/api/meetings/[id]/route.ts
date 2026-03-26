@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth, validateContentType } from '@/lib/auth';
+import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
 import type { MeetingDetail, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -117,7 +117,11 @@ export async function PATCH(
   if (contentTypeError) return contentTypeError as NextResponse<ApiResult<MeetingDetail>>;
 
   const authResultPatch = await validateAuth(request);
-  if (authResultPatch instanceof NextResponse) return authResultPatch as NextResponse<ApiResult<MeetingDetail>>;
+  if (isAuthError(authResultPatch)) return authResultPatch as NextResponse<ApiResult<MeetingDetail>>;
+
+  // ロールチェック: admin または manager のみ商談更新可能
+  const roleError = requireRole(authResultPatch, ['admin', 'manager']);
+  if (roleError) return roleError as NextResponse<ApiResult<MeetingDetail>>;
 
   try {
     const { id } = await params;
@@ -156,7 +160,7 @@ export async function PATCH(
       .from('meetings')
       .update(updateData)
       .eq('id', id)
-      .select()
+      .select('id, company_id, meeting_date, participants, source, source_id, is_internal, ai_estimated_company, approval_status, approved_at, created_at')
       .single();
 
     if (error || !updated) {
@@ -167,9 +171,19 @@ export async function PATCH(
       );
     }
 
-    // 詳細を返す
+    // 詳細を返す（明示的プロパティ列挙でPrototype Pollution防止）
     const detail: MeetingDetail = {
-      ...updated,
+      id: updated.id,
+      company_id: updated.company_id,
+      meeting_date: updated.meeting_date,
+      participants: updated.participants,
+      source: updated.source,
+      source_id: updated.source_id,
+      is_internal: updated.is_internal,
+      ai_estimated_company: updated.ai_estimated_company,
+      approval_status: updated.approval_status,
+      approved_at: updated.approved_at,
+      created_at: updated.created_at,
       transcript: null,
       summary: null,
       company: null,

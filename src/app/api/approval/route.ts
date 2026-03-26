@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth, validateContentType } from '@/lib/auth';
+import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
 import { appendToDocument } from '@/lib/external/google-drive';
 import type { ApprovalRow, ApiResult } from '@/types';
 
@@ -27,7 +27,11 @@ export async function POST(
   if (contentTypeError) return contentTypeError as NextResponse<ApiResult<ApprovalRow>>;
 
   const authResult = await validateAuth(request);
-  if (authResult instanceof NextResponse) return authResult as NextResponse<ApiResult<ApprovalRow>>;
+  if (isAuthError(authResult)) return authResult as NextResponse<ApiResult<ApprovalRow>>;
+
+  // ロールチェック: admin または manager のみ承認可能
+  const roleError = requireRole(authResult, ['admin', 'manager']);
+  if (roleError) return roleError as NextResponse<ApiResult<ApprovalRow>>;
 
   try {
     const body: unknown = await request.json();
@@ -85,10 +89,17 @@ export async function POST(
         correction_note: correctionNote ?? null,
         approved_by: authResult.userId,
       })
-      .select()
+      .select('id, meeting_id, ai_estimated_company, is_correct, corrected_company, correction_note, approved_by, created_at')
       .single();
 
     if (approvalError || !approval) {
+      // UNIQUE制約違反（重複承認）の場合は409を返す
+      if (approvalError?.code === '23505') {
+        return NextResponse.json(
+          { data: null, error: 'この商談は既に承認処理済みです' },
+          { status: 409 }
+        );
+      }
       console.error('承認レコードの作成に失敗しました:', approvalError?.message);
       return NextResponse.json(
         { data: null, error: '承認レコードの作成に失敗しました' },

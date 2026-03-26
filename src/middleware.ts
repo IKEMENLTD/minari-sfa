@@ -32,25 +32,8 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.next();
-
-  // CSP ヘッダーを追加
-  response.headers.set(
-    'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",  // Next.js の動的スクリプトに必要
-      "style-src 'self' 'unsafe-inline'",  // Tailwind CSS に必要
-      "img-src 'self' data: blob:",
-      "font-src 'self'",
-      "connect-src 'self' https://*.supabase.co",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join('; ')
-  );
-
-  return response;
+  // CSP ヘッダーは next.config.ts で一元管理する（重複定義防止）
+  return NextResponse.next();
 }
 
 export const config = {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth, validateContentType } from '@/lib/auth';
+import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
 import type { DealWithDetails, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -41,9 +41,9 @@ export async function GET(
     const { data, error } = await supabase
       .from('deal_statuses')
       .select(`
-        *,
-        companies (*),
-        sales_phases:current_phase_id (*)
+        id, company_id, current_phase_id, next_action, status_summary, last_meeting_date, updated_at, created_at,
+        companies (id, name, tier, expected_revenue, sku_count, assigned_to, created_at, updated_at),
+        sales_phases:current_phase_id (id, phase_name, phase_order, description, created_at)
       `)
       .eq('id', id)
       .single();
@@ -54,6 +54,9 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    const company = Array.isArray(data.companies) ? data.companies[0] : data.companies;
+    const phase = Array.isArray(data.sales_phases) ? data.sales_phases[0] : data.sales_phases;
 
     const deal: DealWithDetails = {
       deal_status: {
@@ -66,8 +69,8 @@ export async function GET(
         updated_at: data.updated_at,
         created_at: data.created_at,
       },
-      company: data.companies,
-      phase: data.sales_phases,
+      company: company as DealWithDetails['company'],
+      phase: phase as DealWithDetails['phase'],
     };
 
     return NextResponse.json({ data: deal, error: null });
@@ -92,7 +95,11 @@ export async function PATCH(
   if (contentTypeError) return contentTypeError as NextResponse<ApiResult<DealWithDetails>>;
 
   const authResult2 = await validateAuth(request);
-  if (authResult2 instanceof NextResponse) return authResult2 as NextResponse<ApiResult<DealWithDetails>>;
+  if (isAuthError(authResult2)) return authResult2 as NextResponse<ApiResult<DealWithDetails>>;
+
+  // ロールチェック: admin または manager のみ案件更新可能
+  const roleError = requireRole(authResult2, ['admin', 'manager']);
+  if (roleError) return roleError as NextResponse<ApiResult<DealWithDetails>>;
 
   try {
     const { id } = await params;
@@ -114,17 +121,24 @@ export async function PATCH(
 
     const supabase = createServerSupabaseClient();
 
+    // Prototype Pollution 防止: zodでバリデーション済みのプロパティのみ明示的に展開
+    const { current_phase_id, next_action, status_summary, last_meeting_date } = parsed.data;
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (current_phase_id !== undefined) updateData.current_phase_id = current_phase_id;
+    if (next_action !== undefined) updateData.next_action = next_action;
+    if (status_summary !== undefined) updateData.status_summary = status_summary;
+    if (last_meeting_date !== undefined) updateData.last_meeting_date = last_meeting_date;
+
     const { data: updated, error } = await supabase
       .from('deal_statuses')
-      .update({
-        ...parsed.data,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', id)
       .select(`
-        *,
-        companies (*),
-        sales_phases:current_phase_id (*)
+        id, company_id, current_phase_id, next_action, status_summary, last_meeting_date, updated_at, created_at,
+        companies (id, name, tier, expected_revenue, sku_count, assigned_to, created_at, updated_at),
+        sales_phases:current_phase_id (id, phase_name, phase_order, description, created_at)
       `)
       .single();
 
@@ -135,6 +149,9 @@ export async function PATCH(
         { status: 500 }
       );
     }
+
+    const updatedCompany = Array.isArray(updated.companies) ? updated.companies[0] : updated.companies;
+    const updatedPhase = Array.isArray(updated.sales_phases) ? updated.sales_phases[0] : updated.sales_phases;
 
     const deal: DealWithDetails = {
       deal_status: {
@@ -147,8 +164,8 @@ export async function PATCH(
         updated_at: updated.updated_at,
         created_at: updated.created_at,
       },
-      company: updated.companies,
-      phase: updated.sales_phases,
+      company: updatedCompany as DealWithDetails['company'],
+      phase: updatedPhase as DealWithDetails['phase'],
     };
 
     return NextResponse.json({ data: deal, error: null });
