@@ -23,7 +23,18 @@ function getCredentials(): ServiceAccountCredentials {
   if (!json) {
     throw new Error('環境変数 GOOGLE_SERVICE_ACCOUNT_JSON が設定されていません');
   }
-  return JSON.parse(json) as ServiceAccountCredentials;
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    if (typeof parsed.client_email !== 'string' || typeof parsed.private_key !== 'string' || typeof parsed.token_uri !== 'string') {
+      throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON に必須フィールド(client_email, private_key, token_uri)が不足しています');
+    }
+    return parsed as unknown as ServiceAccountCredentials;
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new Error('環境変数 GOOGLE_SERVICE_ACCOUNT_JSON が有効なJSONではありません');
+    }
+    throw err;
+  }
 }
 
 /**
@@ -150,7 +161,7 @@ export async function appendToDocument(
   content: string
 ): Promise<void> {
   if (isMockMode()) {
-    console.log(`[モック] Google Docs 追記: docId=${docId}, 内容=${content.slice(0, 50)}...`);
+    console.log('[モック] Google Docs 追記: docId=%s, 内容=%s...', docId.replace(/[\r\n\x1b]/g, ''), content.slice(0, 50).replace(/[\r\n\x1b]/g, ''));
     return;
   }
 
@@ -199,7 +210,7 @@ export async function createDocument(
 ): Promise<{ docId: string; docUrl: string }> {
   if (isMockMode()) {
     const mockId = generateId();
-    console.log(`[モック] Google Docs 作成: 企業=${companyName}, フォルダ=${folderId}`);
+    console.log('[モック] Google Docs 作成: 企業=%s, フォルダ=%s', companyName.replace(/[\r\n\x1b]/g, ''), folderId.replace(/[\r\n\x1b]/g, ''));
     return {
       docId: mockId,
       docUrl: `https://docs.google.com/document/d/${mockId}/edit`,
