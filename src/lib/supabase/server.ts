@@ -2,7 +2,14 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * サーバー用 Supabase クライアントを生成する。
- * service_role キーを使用するため、RLS をバイパスする。
+ * service_role キーを使用するため、RLS を完全にバイパスする。
+ *
+ * SECURITY NOTE:
+ * このクライアントは RLS ポリシーを無視するため、アクセス制御は
+ * 呼び出し元の API ルートで validateAuth() + requireRole() により
+ * アプリケーション層で必ず実施すること。
+ * RLS はクライアント（anon key）直接アクセスに対する防御層として機能する。
+ *
  * リクエストごとに新しいインスタンスを生成することを推奨。
  */
 export function createServerSupabaseClient(): SupabaseClient {

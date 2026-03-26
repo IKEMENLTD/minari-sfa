@@ -120,6 +120,11 @@ export async function fetchProudNoteFiles(): Promise<ProudNoteFile[]> {
     // 各ファイルの内容を取得
     const files: ProudNoteFile[] = [];
     for (const file of data.files) {
+      // file.id のバリデーション（URLインジェクション防止）
+      if (!DOC_ID_PATTERN.test(file.id)) {
+        console.warn(`無効な Google Doc ID をスキップ: ${file.id.slice(0, 20)}`);
+        continue;
+      }
       const docResponse = await fetch(
         `${GOOGLE_DOCS_API}/${file.id}?fields=body`,
         {
@@ -153,6 +158,9 @@ export async function fetchProudNoteFiles(): Promise<ProudNoteFile[]> {
   }
 }
 
+/** Google Doc ID のバリデーション（英数字, -, _ のみ許可） */
+const DOC_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
 /**
  * Google ドキュメントにテキストを追記する
  */
@@ -160,6 +168,11 @@ export async function appendToDocument(
   docId: string,
   content: string
 ): Promise<void> {
+  // docId のバリデーション（パストラバーサル・URLインジェクション防止）
+  if (!DOC_ID_PATTERN.test(docId)) {
+    throw new Error('無効な Google Doc ID です');
+  }
+
   if (isMockMode()) {
     console.log('[モック] Google Docs 追記: docId=%s, 内容=%s...', docId.replace(/[\r\n\x1b]/g, ''), content.slice(0, 50).replace(/[\r\n\x1b]/g, ''));
     return;
@@ -208,6 +221,11 @@ export async function createDocument(
   companyName: string,
   folderId: string
 ): Promise<{ docId: string; docUrl: string }> {
+  // folderId のバリデーション
+  if (!DOC_ID_PATTERN.test(folderId)) {
+    throw new Error('無効な Google Drive フォルダ ID です');
+  }
+
   if (isMockMode()) {
     const mockId = generateId();
     console.log('[モック] Google Docs 作成: 企業=%s, フォルダ=%s', companyName.replace(/[\r\n\x1b]/g, ''), folderId.replace(/[\r\n\x1b]/g, ''));

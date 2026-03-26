@@ -14,10 +14,12 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
   try {
     const supabase = createServerSupabaseClient();
 
+    // フェーズ数は約30件で固定的だが、安全のため上限100件に制限
     const { data, error } = await supabase
       .from('sales_phases')
       .select('id, phase_name, phase_order, description, created_at')
-      .order('phase_order', { ascending: true });
+      .order('phase_order', { ascending: true })
+      .limit(100);
 
     if (error) {
       console.error('フェーズ一覧の取得に失敗しました:', error.message);

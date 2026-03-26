@@ -108,12 +108,13 @@ export function isAuthError(
 /**
  * POST/PATCH/PUT リクエストの Content-Type が application/json であることを検証する。
  * text/plain や multipart/form-data での CSRF 攻撃を防止する。
+ * DELETE はリクエストボディを持たない場合があるため対象外。
  */
 export function validateContentType(
   request: NextRequest
 ): NextResponse<ApiResult<null>> | null {
   const method = request.method.toUpperCase();
-  if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
+  if (['POST', 'PATCH', 'PUT'].includes(method)) {
     const contentType = request.headers.get('Content-Type') ?? '';
     if (!contentType.includes('application/json')) {
       return NextResponse.json(
