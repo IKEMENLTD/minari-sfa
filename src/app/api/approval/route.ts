@@ -11,8 +11,8 @@ import type { ApprovalRow, ApiResult } from '@/types';
 const approvalSchema = z.object({
   meetingId: z.string().uuid(),
   isCorrect: z.boolean(),
-  correctedCompany: z.string().optional(),
-  correctionNote: z.string().optional(),
+  correctedCompany: z.string().max(500).optional(),
+  correctionNote: z.string().max(2000).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -66,8 +66,9 @@ export async function POST(
       .single();
 
     if (approvalError || !approval) {
+      console.error('承認レコードの作成に失敗しました:', approvalError?.message);
       return NextResponse.json(
-        { data: null, error: `承認レコードの作成に失敗しました: ${approvalError?.message}` },
+        { data: null, error: '承認レコードの作成に失敗しました' },
         { status: 500 }
       );
     }
@@ -120,7 +121,8 @@ export async function POST(
         }
       } catch (docError) {
         // Google Docs への追記失敗はログに記録するが、承認処理自体は成功とする
-        console.error('Google Docs 追記に失敗しました:', docError);
+        const docErrMsg = docError instanceof Error ? docError.message : '不明なエラー';
+        console.error('Google Docs 追記に失敗しました:', docErrMsg);
       }
     }
 

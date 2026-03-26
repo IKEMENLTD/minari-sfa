@@ -1,21 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { validateAuth } from '@/lib/auth';
 import type { MeetingRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
 // バリデーション
 // ---------------------------------------------------------------------------
 
+const VALID_APPROVAL_STATUSES = ['pending', 'approved', 'rejected'] as const;
+
 const createMeetingSchema = z.object({
   company_id: z.string().uuid().nullable().optional(),
   meeting_date: z.string().date(),
-  participants: z.array(z.string()),
+  participants: z.array(z.string().max(200)).max(50),
   source: z.enum(['jamroll', 'proud']),
-  source_id: z.string().nullable().optional(),
+  source_id: z.string().max(500).nullable().optional(),
   is_internal: z.boolean(),
-  ai_estimated_company: z.string().nullable().optional(),
-  transcript_text: z.string().optional(),
+  ai_estimated_company: z.string().max(500).nullable().optional(),
+  transcript_text: z.string().max(500_000).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -25,12 +28,23 @@ const createMeetingSchema = z.object({
 export async function GET(
   request: NextRequest
 ): Promise<NextResponse<ApiResult<MeetingRow[]>>> {
+  const authError = validateAuth(request);
+  if (authError) return authError as NextResponse<ApiResult<MeetingRow[]>>;
+
   try {
     const supabase = createServerSupabaseClient();
     const { searchParams } = new URL(request.url);
 
     const approvalStatus = searchParams.get('approval_status');
     const isInternal = searchParams.get('is_internal');
+
+    // クエリパラメータのバリデーション
+    if (approvalStatus && !(VALID_APPROVAL_STATUSES as readonly string[]).includes(approvalStatus)) {
+      return NextResponse.json(
+        { data: null, error: `無効な approval_status です。有効な値: ${VALID_APPROVAL_STATUSES.join(', ')}` },
+        { status: 400 }
+      );
+    }
 
     let query = supabase
       .from('meetings')

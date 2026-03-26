@@ -7,10 +7,12 @@ import type { MeetingDetail, ApiResult } from '@/types';
 // バリデーション
 // ---------------------------------------------------------------------------
 
+const uuidSchema = z.string().uuid();
+
 const updateMeetingSchema = z.object({
   company_id: z.string().uuid().nullable().optional(),
   meeting_date: z.string().date().optional(),
-  participants: z.array(z.string()).optional(),
+  participants: z.array(z.string().max(200)).max(50).optional(),
   is_internal: z.boolean().optional(),
   approval_status: z.enum(['pending', 'approved', 'rejected']).optional(),
 });
@@ -25,6 +27,12 @@ export async function GET(
 ): Promise<NextResponse<ApiResult<MeetingDetail>>> {
   try {
     const { id } = await params;
+    if (!uuidSchema.safeParse(id).success) {
+      return NextResponse.json(
+        { data: null, error: '無効なIDフォーマットです' },
+        { status: 400 }
+      );
+    }
     const supabase = createServerSupabaseClient();
 
     // 商談本体を取得
@@ -95,6 +103,12 @@ export async function PATCH(
 ): Promise<NextResponse<ApiResult<MeetingDetail>>> {
   try {
     const { id } = await params;
+    if (!uuidSchema.safeParse(id).success) {
+      return NextResponse.json(
+        { data: null, error: '無効なIDフォーマットです' },
+        { status: 400 }
+      );
+    }
     const body: unknown = await request.json();
     const parsed = updateMeetingSchema.safeParse(body);
 

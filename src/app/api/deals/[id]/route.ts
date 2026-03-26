@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { validateAuth } from '@/lib/auth';
 import type { DealWithDetails, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
 // バリデーション
 // ---------------------------------------------------------------------------
 
+const uuidSchema = z.string().uuid();
+
 const updateDealStatusSchema = z.object({
   current_phase_id: z.string().uuid().optional(),
-  next_action: z.string().optional(),
-  status_summary: z.string().optional(),
+  next_action: z.string().max(500).optional(),
+  status_summary: z.string().max(2000).optional(),
   last_meeting_date: z.string().date().optional(),
 });
 
@@ -19,11 +22,20 @@ const updateDealStatusSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResult<DealWithDetails>>> {
+  const authError = validateAuth(request);
+  if (authError) return authError as NextResponse<ApiResult<DealWithDetails>>;
+
   try {
     const { id } = await params;
+    if (!uuidSchema.safeParse(id).success) {
+      return NextResponse.json(
+        { data: null, error: '無効なIDフォーマットです' },
+        { status: 400 }
+      );
+    }
     const supabase = createServerSupabaseClient();
 
     const { data, error } = await supabase
@@ -60,9 +72,9 @@ export async function GET(
 
     return NextResponse.json({ data: deal, error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+    console.error('案件詳細の取得中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { data: null, error: `案件詳細の取得中にエラーが発生しました: ${message}` },
+      { data: null, error: '案件詳細の取得中にエラーが発生しました' },
       { status: 500 }
     );
   }
@@ -76,8 +88,17 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResult<DealWithDetails>>> {
+  const authError = validateAuth(request);
+  if (authError) return authError as NextResponse<ApiResult<DealWithDetails>>;
+
   try {
     const { id } = await params;
+    if (!uuidSchema.safeParse(id).success) {
+      return NextResponse.json(
+        { data: null, error: '無効なIDフォーマットです' },
+        { status: 400 }
+      );
+    }
     const body: unknown = await request.json();
     const parsed = updateDealStatusSchema.safeParse(body);
 
@@ -105,8 +126,9 @@ export async function PATCH(
       .single();
 
     if (error || !updated) {
+      console.error('案件の更新に失敗しました:', error?.message);
       return NextResponse.json(
-        { data: null, error: `案件の更新に失敗しました: ${error?.message}` },
+        { data: null, error: '案件の更新に失敗しました' },
         { status: 500 }
       );
     }
