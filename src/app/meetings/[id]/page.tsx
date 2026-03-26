@@ -5,6 +5,7 @@ import type { MeetingDetail, ApiResult } from '@/types';
 
 async function getMeeting(id: string): Promise<MeetingDetail | null> {
   try {
+    // NOTE: 本番環境では必ず NEXT_PUBLIC_BASE_URL を https:// で設定すること
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     const res = await fetch(`${baseUrl}/api/meetings/${id}`, {
       cache: 'no-store',

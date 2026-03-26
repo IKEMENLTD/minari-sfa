@@ -10,6 +10,7 @@ interface DealPageData {
 
 async function getDeal(id: string): Promise<DealPageData | null> {
   try {
+    // NOTE: 本番環境では必ず NEXT_PUBLIC_BASE_URL を https:// で設定すること
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     const [dealRes, phasesRes] = await Promise.all([
       fetch(`${baseUrl}/api/deals/${id}`, { cache: 'no-store' }),
