@@ -150,9 +150,9 @@ export async function PATCH(
 
     return NextResponse.json({ data: deal, error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+    console.error('案件の更新中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { data: null, error: `案件の更新中にエラーが発生しました: ${message}` },
+      { data: null, error: '案件の更新中にエラーが発生しました' },
       { status: 500 }
     );
   }

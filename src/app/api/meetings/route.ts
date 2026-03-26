@@ -62,17 +62,18 @@ export async function GET(
     const { data, error } = await query;
 
     if (error) {
+      console.error('商談一覧の取得に失敗しました:', error.message);
       return NextResponse.json(
-        { data: null, error: `商談一覧の取得に失敗しました: ${error.message}` },
+        { data: null, error: '商談一覧の取得に失敗しました' },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ data: data as MeetingRow[], error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+    console.error('商談一覧の取得中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { data: null, error: `商談一覧の取得中にエラーが発生しました: ${message}` },
+      { data: null, error: '商談一覧の取得中にエラーが発生しました' },
       { status: 500 }
     );
   }
@@ -85,6 +86,9 @@ export async function GET(
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<ApiResult<MeetingRow>>> {
+  const authErrorPost = validateAuth(request);
+  if (authErrorPost) return authErrorPost as NextResponse<ApiResult<MeetingRow>>;
+
   try {
     const body: unknown = await request.json();
     const parsed = createMeetingSchema.safeParse(body);
@@ -107,8 +111,9 @@ export async function POST(
       .single();
 
     if (meetingError || !meeting) {
+      console.error('商談の作成に失敗しました:', meetingError?.message);
       return NextResponse.json(
-        { data: null, error: `商談の作成に失敗しました: ${meetingError?.message}` },
+        { data: null, error: '商談の作成に失敗しました' },
         { status: 500 }
       );
     }
@@ -133,9 +138,9 @@ export async function POST(
       { status: 201 }
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+    console.error('商談の作成中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { data: null, error: `商談の作成中にエラーが発生しました: ${message}` },
+      { data: null, error: '商談の作成中にエラーが発生しました' },
       { status: 500 }
     );
   }

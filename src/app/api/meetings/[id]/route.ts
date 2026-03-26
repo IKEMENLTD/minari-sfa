@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { validateAuth } from '@/lib/auth';
 import type { MeetingDetail, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -22,9 +23,12 @@ const updateMeetingSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResult<MeetingDetail>>> {
+  const authError = validateAuth(request);
+  if (authError) return authError as NextResponse<ApiResult<MeetingDetail>>;
+
   try {
     const { id } = await params;
     if (!uuidSchema.safeParse(id).success) {
@@ -85,9 +89,9 @@ export async function GET(
 
     return NextResponse.json({ data: detail, error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+    console.error('商談詳細の取得中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { data: null, error: `商談詳細の取得中にエラーが発生しました: ${message}` },
+      { data: null, error: '商談詳細の取得中にエラーが発生しました' },
       { status: 500 }
     );
   }
@@ -101,6 +105,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResult<MeetingDetail>>> {
+  const authErrorPatch = validateAuth(request);
+  if (authErrorPatch) return authErrorPatch as NextResponse<ApiResult<MeetingDetail>>;
+
   try {
     const { id } = await params;
     if (!uuidSchema.safeParse(id).success) {
@@ -135,8 +142,9 @@ export async function PATCH(
       .single();
 
     if (error || !updated) {
+      console.error('商談の更新に失敗しました:', error?.message);
       return NextResponse.json(
-        { data: null, error: `商談の更新に失敗しました: ${error?.message}` },
+        { data: null, error: '商談の更新に失敗しました' },
         { status: 500 }
       );
     }
@@ -151,9 +159,9 @@ export async function PATCH(
 
     return NextResponse.json({ data: detail, error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+    console.error('商談の更新中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { data: null, error: `商談の更新中にエラーが発生しました: ${message}` },
+      { data: null, error: '商談の更新中にエラーが発生しました' },
       { status: 500 }
     );
   }

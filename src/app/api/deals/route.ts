@@ -1,12 +1,16 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { validateAuth } from '@/lib/auth';
 import type { DealWithDetails, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
 // GET /api/deals - 案件一覧
 // ---------------------------------------------------------------------------
 
-export async function GET(): Promise<NextResponse<ApiResult<DealWithDetails[]>>> {
+export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<DealWithDetails[]>>> {
+  const authError = validateAuth(request);
+  if (authError) return authError as NextResponse<ApiResult<DealWithDetails[]>>;
+
   try {
     const supabase = createServerSupabaseClient();
 
@@ -20,8 +24,9 @@ export async function GET(): Promise<NextResponse<ApiResult<DealWithDetails[]>>>
       .order('updated_at', { ascending: false });
 
     if (error) {
+      console.error('案件一覧の取得に失敗しました:', error.message);
       return NextResponse.json(
-        { data: null, error: `案件一覧の取得に失敗しました: ${error.message}` },
+        { data: null, error: '案件一覧の取得に失敗しました' },
         { status: 500 }
       );
     }
@@ -43,9 +48,9 @@ export async function GET(): Promise<NextResponse<ApiResult<DealWithDetails[]>>>
 
     return NextResponse.json({ data: deals, error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+    console.error('案件一覧の取得中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { data: null, error: `案件一覧の取得中にエラーが発生しました: ${message}` },
+      { data: null, error: '案件一覧の取得中にエラーが発生しました' },
       { status: 500 }
     );
   }

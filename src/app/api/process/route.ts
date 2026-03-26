@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { validateAuth } from '@/lib/auth';
 import { fetchNewTranscripts } from '@/lib/external/jamroll';
 import { fetchProudNoteFiles } from '@/lib/external/google-drive';
 import { summarizeMeeting } from '@/lib/external/claude';
@@ -24,9 +25,15 @@ interface ProcessResult {
 
 // ---------------------------------------------------------------------------
 // POST /api/process - 議事録処理トリガー
+// TODO: レート制限の実装が必要。Claude API 呼び出しを含む重い処理のため、
+// 大量リクエストによるDoS攻撃や意図しない課金を防ぐ仕組みが必要。
+// 本番環境では upstash/ratelimit 等のミドルウェアを導入すること。
 // ---------------------------------------------------------------------------
 
-export async function POST(): Promise<NextResponse<ApiResult<ProcessResult>>> {
+export async function POST(request: NextRequest): Promise<NextResponse<ApiResult<ProcessResult>>> {
+  const authError = validateAuth(request);
+  if (authError) return authError as NextResponse<ApiResult<ProcessResult>>;
+
   try {
     const supabase = createServerSupabaseClient();
     const results: ProcessResult['results'] = [];
@@ -37,8 +44,8 @@ export async function POST(): Promise<NextResponse<ApiResult<ProcessResult>>> {
     try {
       jamrollTranscripts = await fetchNewTranscripts();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '不明なエラー';
-      errors.push(`Jamroll データ取得失敗: ${msg}`);
+      console.error('Jamroll データ取得失敗:', err instanceof Error ? err.message : err);
+      errors.push('Jamroll データ取得失敗');
     }
 
     // 2. PROUD Note からデータ取得
@@ -46,8 +53,8 @@ export async function POST(): Promise<NextResponse<ApiResult<ProcessResult>>> {
     try {
       proudFiles = await fetchProudNoteFiles();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '不明なエラー';
-      errors.push(`PROUD Note データ取得失敗: ${msg}`);
+      console.error('PROUD Note データ取得失敗:', err instanceof Error ? err.message : err);
+      errors.push('PROUD Note データ取得失敗');
     }
 
     // 3. Jamroll 議事録を処理
@@ -84,7 +91,8 @@ export async function POST(): Promise<NextResponse<ApiResult<ProcessResult>>> {
           .single();
 
         if (meetingError || !meeting) {
-          errors.push(`Jamroll ${transcript.id} の商談作成失敗: ${meetingError?.message}`);
+          console.error(`Jamroll ${transcript.id} の商談作成失敗:`, meetingError?.message);
+          errors.push(`Jamroll ${transcript.id} の商談作成失敗`);
           continue;
         }
 
@@ -111,8 +119,8 @@ export async function POST(): Promise<NextResponse<ApiResult<ProcessResult>>> {
           isInternal: analysis.isInternal,
         });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : '不明なエラー';
-        errors.push(`Jamroll ${transcript.id} の処理失敗: ${msg}`);
+        console.error(`Jamroll ${transcript.id} の処理失敗:`, err instanceof Error ? err.message : err);
+        errors.push(`Jamroll ${transcript.id} の処理失敗`);
       }
     }
 
@@ -150,7 +158,8 @@ export async function POST(): Promise<NextResponse<ApiResult<ProcessResult>>> {
           .single();
 
         if (meetingError || !meeting) {
-          errors.push(`PROUD ${file.id} の商談作成失敗: ${meetingError?.message}`);
+          console.error(`PROUD ${file.id} の商談作成失敗:`, meetingError?.message);
+          errors.push(`PROUD ${file.id} の商談作成失敗`);
           continue;
         }
 
@@ -177,8 +186,8 @@ export async function POST(): Promise<NextResponse<ApiResult<ProcessResult>>> {
           isInternal: analysis.isInternal,
         });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : '不明なエラー';
-        errors.push(`PROUD ${file.id} の処理失敗: ${msg}`);
+        console.error(`PROUD ${file.id} の処理失敗:`, err instanceof Error ? err.message : err);
+        errors.push(`PROUD ${file.id} の処理失敗`);
       }
     }
 
@@ -190,9 +199,9 @@ export async function POST(): Promise<NextResponse<ApiResult<ProcessResult>>> {
 
     return NextResponse.json({ data: processResult, error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+    console.error('議事録処理中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { data: null, error: `議事録処理中にエラーが発生しました: ${message}` },
+      { data: null, error: '議事録処理中にエラーが発生しました' },
       { status: 500 }
     );
   }

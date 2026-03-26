@@ -88,7 +88,9 @@ export async function fetchNewTranscripts(): Promise<JamrollTranscript[]> {
     });
 
     if (!response.ok) {
-      throw new Error(`Jamroll API エラー (${response.status}): ${await response.text()}`);
+      const errorBody = await response.text();
+      console.error(`Jamroll API エラー詳細 (${response.status}):`, errorBody);
+      throw new Error(`Jamroll API エラー (${response.status}): リクエストに失敗しました`);
     }
 
     const data = (await response.json()) as { transcripts: JamrollTranscript[] };

@@ -1,7 +1,25 @@
+import { z } from 'zod';
 import { API_TIMEOUT_MS } from '@/lib/constants';
 import { isMockMode } from '@/lib/utils';
 import type { MeetingSummaryResult, SalesPhaseJudgment } from '@/types';
 import { SALES_PHASES } from '@/lib/constants';
+
+// ---------------------------------------------------------------------------
+// レスポンスバリデーションスキーマ
+// ---------------------------------------------------------------------------
+
+const meetingSummarySchema = z.object({
+  summary: z.string(),
+  estimatedCompany: z.string(),
+  participants: z.array(z.string()),
+  isInternal: z.boolean(),
+});
+
+const salesPhaseJudgmentSchema = z.object({
+  phaseId: z.string(),
+  nextAction: z.string(),
+  statusSummary: z.string(),
+});
 
 // ---------------------------------------------------------------------------
 // Claude API 連携
@@ -49,8 +67,10 @@ async function callClaude(
   });
 
   if (!response.ok) {
+    // エラーレスポンス本文はログにのみ記録し、外部には返さない
     const errorBody = await response.text();
-    throw new Error(`Claude API エラー (${response.status}): ${errorBody}`);
+    console.error(`Claude API エラー詳細 (${response.status}):`, errorBody);
+    throw new Error(`Claude API エラー (${response.status}): リクエストに失敗しました`);
   }
 
   const data = (await response.json()) as ClaudeResponse;
@@ -147,8 +167,9 @@ export async function summarizeMeeting(
       controller.signal
     );
 
-    const parsed = JSON.parse(result) as MeetingSummaryResult;
-    return parsed;
+    const rawParsed: unknown = JSON.parse(result);
+    const validated = meetingSummarySchema.parse(rawParsed);
+    return validated;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -192,8 +213,9 @@ ${phaseList}
       controller.signal
     );
 
-    const parsed = JSON.parse(result) as SalesPhaseJudgment;
-    return parsed;
+    const rawParsed: unknown = JSON.parse(result);
+    const validated = salesPhaseJudgmentSchema.parse(rawParsed);
+    return validated;
   } finally {
     clearTimeout(timeoutId);
   }

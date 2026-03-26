@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { validateAuth } from '@/lib/auth';
 import { appendToDocument } from '@/lib/external/google-drive';
 import type { ApprovalRow, ApiResult } from '@/types';
 
@@ -22,6 +23,9 @@ const approvalSchema = z.object({
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<ApiResult<ApprovalRow>>> {
+  const authError = validateAuth(request);
+  if (authError) return authError as NextResponse<ApiResult<ApprovalRow>>;
+
   try {
     const body: unknown = await request.json();
     const parsed = approvalSchema.safeParse(body);
@@ -131,9 +135,9 @@ export async function POST(
       { status: 201 }
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+    console.error('承認処理中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { data: null, error: `承認処理中にエラーが発生しました: ${message}` },
+      { data: null, error: '承認処理中にエラーが発生しました' },
       { status: 500 }
     );
   }
