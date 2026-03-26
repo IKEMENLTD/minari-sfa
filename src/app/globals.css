@@ -8,6 +8,9 @@
   --color-text-secondary: #6b7280;
   --color-accent: #2563eb;
   --color-accent-hover: #1d4ed8;
+  --color-muted: #f3f4f6;
+  --color-muted-hover: #e5e7eb;
+  --color-muted-foreground: #4b5563;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 

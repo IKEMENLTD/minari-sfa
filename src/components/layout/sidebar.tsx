@@ -49,7 +49,7 @@ function Sidebar() {
               'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
               active
                 ? 'bg-accent/10 text-accent'
-                : 'text-text-secondary hover:bg-gray-100 hover:text-text',
+                : 'text-text-secondary hover:bg-muted hover:text-text',
             )}
           >
             <Icon className="h-4 w-4 shrink-0" />

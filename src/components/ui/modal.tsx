@@ -46,7 +46,7 @@ function Modal({ open, onClose, title, children, footer, className }: ModalProps
         aria-modal="true"
         aria-labelledby={title ? 'modal-title' : undefined}
         className={clsx(
-          'relative z-50 w-full max-w-lg rounded-md border border-border bg-surface shadow-lg',
+          'relative z-50 w-full max-w-lg rounded-md border border-border bg-surface shadow-sm',
           className,
         )}
       >
@@ -57,7 +57,7 @@ function Modal({ open, onClose, title, children, footer, className }: ModalProps
           {!title && <div />}
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
+            className="rounded-md p-1 text-text-secondary hover:bg-muted hover:text-text transition-colors"
             aria-label="閉じる"
           >
             <X className="h-4 w-4" />

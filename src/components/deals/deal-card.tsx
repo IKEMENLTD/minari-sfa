@@ -33,7 +33,7 @@ function DealCard({ deal, allPhases }: DealCardProps) {
             <span>進捗</span>
             <span>{progressPercent}%</span>
           </div>
-          <div className="h-1.5 w-full rounded-full bg-gray-100">
+          <div className="h-1.5 w-full rounded-full bg-muted">
             <div
               className="h-1.5 rounded-full bg-accent transition-all"
               style={{ width: `${progressPercent}%` }}

@@ -49,7 +49,7 @@ function SummaryCard({ icon: Icon, label, value, loading }: SummaryCardProps) {
   return (
     <Card>
       <CardContent className="flex items-center gap-4 py-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-gray-100">
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
           <Icon className="h-5 w-5 text-text-secondary" />
         </div>
         <div>
@@ -113,7 +113,7 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <h1 className="text-xl font-semibold text-text">ダッシュボード</h1>
 
       {error && (

@@ -42,7 +42,7 @@ function TableBody({ children, className, ...props }: HTMLAttributes<HTMLTableSe
 function TableRow({ children, className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
-      className={clsx('hover:bg-gray-50 transition-colors', className)}
+      className={clsx('hover:bg-muted/50 transition-colors', className)}
       {...props}
     >
       {children}
