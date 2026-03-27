@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { MeetingList } from '@/components/meetings/meeting-list';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -19,10 +20,16 @@ const statusOptions = [
 ];
 
 export default function MeetingsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [meetings, setMeetings] = useState<MeetingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('');
+  const [statusFilter, setStatusFilter] = useState<FilterStatus>(
+    (searchParams.get('approval_status') as FilterStatus) ?? ''
+  );
+  const companyId = searchParams.get('company_id') ?? '';
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchMeetings = useCallback(async () => {
@@ -40,6 +47,7 @@ export default function MeetingsPage() {
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set('approval_status', statusFilter);
+      if (companyId) params.set('company_id', companyId);
       const res = await fetch(`/api/meetings?${params.toString()}`, {
         signal: controller.signal,
       });
@@ -56,7 +64,7 @@ export default function MeetingsPage() {
       clearTimeout(timeoutId);
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, companyId]);
 
   useEffect(() => {
     fetchMeetings();
@@ -65,15 +73,40 @@ export default function MeetingsPage() {
     };
   }, [fetchMeetings]);
 
+  const handleStatusChange = (value: FilterStatus) => {
+    setStatusFilter(value);
+    const params = new URLSearchParams(searchParams.toString());
+    if (value) {
+      params.set('approval_status', value);
+    } else {
+      params.delete('approval_status');
+    }
+    router.replace(`/meetings?${params.toString()}`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-text">議事録一覧</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-text">議事録一覧</h1>
+          {companyId && (
+            <p className="mt-0.5 text-xs text-text-secondary">
+              企業でフィルタ中
+              <button
+                type="button"
+                onClick={() => router.replace('/meetings')}
+                className="ml-2 text-accent hover:underline"
+              >
+                解除
+              </button>
+            </p>
+          )}
+        </div>
         <div className="w-48">
           <Select
             options={statusOptions}
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
+            onChange={(e) => handleStatusChange(e.target.value as FilterStatus)}
             placeholder="ステータスで絞り込み"
           />
         </div>

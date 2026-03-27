@@ -112,6 +112,13 @@ export default function ApprovalPage() {
       const errorJson: { error: string } = await res.json();
       throw new Error(errorJson.error || '承認処理に失敗しました');
     }
+    const json: { data: { ai_estimated_company: string; corrected_company: string | null } } = await res.json();
+    const companyName = json.data.corrected_company ?? json.data.ai_estimated_company;
+    if (companyName && companyName !== '(社内)') {
+      setProcessMessage(`「${companyName}」を案件管理に登録しました`);
+    } else {
+      setProcessMessage('承認しました');
+    }
     // 承認後にcompaniesをリフレッシュ（新規企業が登録された可能性）
     setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
     await fetchData();

@@ -40,6 +40,7 @@ export async function GET(
     const isInternal = searchParams.get('is_internal');
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE));
+    const companyId = searchParams.get('company_id');
     const offset = (page - 1) * limit;
 
     // クエリパラメータのバリデーション
@@ -61,6 +62,10 @@ export async function GET(
 
     if (isInternal !== null && isInternal !== undefined && isInternal !== '') {
       query = query.eq('is_internal', isInternal === 'true');
+    }
+
+    if (companyId) {
+      query = query.eq('company_id', companyId);
     }
 
     query = query.range(offset, offset + limit - 1);

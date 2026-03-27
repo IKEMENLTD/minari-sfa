@@ -182,13 +182,23 @@ export default function DashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold text-text">承認待ち商談</h2>
-          <Link
-            href="/approval"
-            className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
-          >
-            全て見る
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+          {!loading && data && data.pendingCount > 0 ? (
+            <Link
+              href="/approval"
+              className="inline-flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90"
+            >
+              {data.pendingCount}件を承認する
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          ) : (
+            <Link
+              href="/approval"
+              className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
+            >
+              全て見る
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
         </div>
         <Card>
           <Table>
