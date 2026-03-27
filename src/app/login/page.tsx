@@ -16,11 +16,15 @@ export default function LoginPage() {
     setError('');
 
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
+        signal: controller.signal,
       });
+      clearTimeout(timer);
 
       if (res.ok) {
         router.push('/');
@@ -29,8 +33,11 @@ export default function LoginPage() {
         setError('パスワードが正しくありません');
         setLoading(false);
       }
-    } catch {
-      setError('サーバーに接続できません。しばらく待ってから再試行してください。');
+    } catch (err) {
+      const msg = err instanceof Error && err.name === 'AbortError'
+        ? 'タイムアウトしました。サーバーが起動中です。15秒後に再試行してください。'
+        : 'サーバーに接続できません。しばらく待ってから再試行してください。';
+      setError(msg);
       setLoading(false);
     }
   }

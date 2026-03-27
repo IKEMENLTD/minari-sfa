@@ -5,7 +5,7 @@ const MAX_BODY_SIZE = 1_048_576;
 const COOKIE_NAME = 'sd_auth';
 
 // 認証不要なパス
-const PUBLIC_PATHS = ['/login', '/api/auth/login'];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/health'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

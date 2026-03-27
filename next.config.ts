@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-poweredByHeader: false,
+  poweredByHeader: false,
   productionBrowserSourceMaps: false,
   typescript: {
     ignoreBuildErrors: false,
