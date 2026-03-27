@@ -19,19 +19,23 @@ interface ServiceAccountCredentials {
  * Google サービスアカウント認証情報を取得する
  */
 function getCredentials(): ServiceAccountCredentials {
-  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  // Base64エンコード版を優先（Renderで"を含むJSONが設定できないため）
+  const base64 = process.env.GOOGLE_SERVICE_ACCOUNT_BASE64;
+  const json = base64
+    ? Buffer.from(base64, 'base64').toString('utf-8')
+    : process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!json) {
-    throw new Error('環境変数 GOOGLE_SERVICE_ACCOUNT_JSON が設定されていません');
+    throw new Error('環境変数 GOOGLE_SERVICE_ACCOUNT_BASE64 または GOOGLE_SERVICE_ACCOUNT_JSON が設定されていません');
   }
   try {
     const parsed = JSON.parse(json) as Record<string, unknown>;
     if (typeof parsed.client_email !== 'string' || typeof parsed.private_key !== 'string' || typeof parsed.token_uri !== 'string') {
-      throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON に必須フィールド(client_email, private_key, token_uri)が不足しています');
+      throw new Error('サービスアカウントJSONに必須フィールド(client_email, private_key, token_uri)が不足しています');
     }
     return parsed as unknown as ServiceAccountCredentials;
   } catch (err) {
     if (err instanceof SyntaxError) {
-      throw new Error('環境変数 GOOGLE_SERVICE_ACCOUNT_JSON が有効なJSONではありません');
+      throw new Error('サービスアカウントJSONが有効なJSONではありません');
     }
     throw err;
   }
