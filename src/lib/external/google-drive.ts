@@ -101,8 +101,12 @@ export async function fetchProudNoteFiles(): Promise<ProudNoteFile[]> {
   try {
     const token = await getAccessToken(controller.signal);
 
+    const proudFolderId = process.env.GOOGLE_DRIVE_PROUD_FOLDER_ID;
+    const folderFilter = proudFolderId
+      ? `'${proudFolderId}' in parents and `
+      : '';
     const response = await fetch(
-      `${GOOGLE_DRIVE_API}?q=mimeType='application/vnd.google-apps.document'&orderBy=modifiedTime desc`,
+      `${GOOGLE_DRIVE_API}?q=${encodeURIComponent(`${folderFilter}mimeType='application/vnd.google-apps.document'`)}&orderBy=modifiedTime desc`,
       {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
