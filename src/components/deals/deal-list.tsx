@@ -20,7 +20,7 @@ function DealList({ deals }: DealListProps) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-text-secondary">
         <Briefcase className="h-10 w-10 mb-3 opacity-40" />
-        <p className="text-sm">案件がありません</p>
+        <p className="text-sm">まだ案件がありません。議事録を取り込んで承認すると自動で登録されます。</p>
       </div>
     );
   }

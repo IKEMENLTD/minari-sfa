@@ -34,7 +34,7 @@ function MeetingList({ meetings }: MeetingListProps) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-text-secondary">
         <FileText className="h-10 w-10 mb-3 opacity-40" />
-        <p className="text-sm">議事録がありません</p>
+        <p className="text-sm">まだ議事録がありません。音声や文字起こしデータを取り込んで議事録を登録してください。</p>
       </div>
     );
   }
