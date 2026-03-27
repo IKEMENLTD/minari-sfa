@@ -132,7 +132,7 @@ export default function ApprovalPage() {
       const errorJson: { error: string } = await res.json();
       throw new Error(errorJson.error || '却下処理に失敗しました');
     }
-    setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
+    await fetchData();
   };
 
   const pendingCount = meetings.length;
