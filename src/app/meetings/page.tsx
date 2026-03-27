@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MeetingList } from '@/components/meetings/meeting-list';
 import { Select } from '@/components/ui/select';
@@ -19,7 +19,7 @@ const statusOptions = [
   { value: 'rejected', label: '却下' },
 ];
 
-export default function MeetingsPage() {
+function MeetingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -147,5 +147,33 @@ export default function MeetingsPage() {
         <MeetingList meetings={meetings} />
       )}
     </div>
+  );
+}
+
+export default function MeetingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <h1 className="text-xl font-semibold text-text">議事録一覧</h1>
+        <Table>
+          <TableHead>
+            <tr>
+              <TableHeader>日付</TableHeader>
+              <TableHeader>企業名（推定）</TableHeader>
+              <TableHeader>参加者</TableHeader>
+              <TableHeader>ソース</TableHeader>
+              <TableHeader>ステータス</TableHeader>
+            </tr>
+          </TableHead>
+          <TableBody>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SkeletonTableRow key={i} columns={5} />
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    }>
+      <MeetingsContent />
+    </Suspense>
   );
 }
