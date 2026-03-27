@@ -1,21 +1,16 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-/**
- * Next.js Middleware - 全リクエストに対するセキュリティチェック
- *
- * 1. API ルートへのリクエストボディサイズ制限
- * 2. パストラバーサル防止
- * 3. セキュリティヘッダー追加（CSP）
- */
-
-/** リクエストボディの最大サイズ（1MB） */
 const MAX_BODY_SIZE = 1_048_576;
+const COOKIE_NAME = 'sd_auth';
+
+// 認証不要なパス
+const PUBLIC_PATHS = ['/login', '/api/auth/login'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // パストラバーサル防止: デコード後のパスに .. が含まれていたらブロック
+  // パストラバーサル防止
   const decodedPath = decodeURIComponent(pathname);
   if (decodedPath.includes('..') || decodedPath.includes('\0')) {
     return new NextResponse('Bad Request', { status: 400 });
@@ -32,7 +27,16 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // CSP ヘッダーは next.config.ts で一元管理する（重複定義防止）
+  // 認証チェック（公開パスはスキップ）
+  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  if (!isPublic) {
+    const auth = request.cookies.get(COOKIE_NAME);
+    if (!auth || auth.value !== 'authenticated') {
+      const loginUrl = new URL('/login', request.url);
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+
   return NextResponse.next();
 }
 
