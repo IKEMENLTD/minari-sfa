@@ -145,6 +145,7 @@ export interface ApprovalRequest {
   isCorrect: boolean;
   correctedCompany?: string;
   correctionNote?: string;
+  action?: 'approve' | 'reject';
 }
 
 /** PATCH /api/deals/[id] */

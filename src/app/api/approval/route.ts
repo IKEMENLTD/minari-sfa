@@ -15,6 +15,7 @@ const approvalSchema = z.object({
   isCorrect: z.boolean(),
   correctedCompany: z.string().max(500).optional(),
   correctionNote: z.string().max(2000).optional(),
+  action: z.enum(['approve', 'reject']).optional(),
 }).strict();
 
 // ---------------------------------------------------------------------------
@@ -51,8 +52,29 @@ export async function POST(
       );
     }
 
-    const { meetingId, isCorrect, correctedCompany, correctionNote } = parsed.data;
+    const { meetingId, isCorrect, correctedCompany, correctionNote, action } = parsed.data;
     const supabase = createServerSupabaseClient();
+
+    // --- 却下（スキップ）処理 ---
+    if (action === 'reject') {
+      const { error: rejectError } = await supabase
+        .from('meetings')
+        .update({ approval_status: 'rejected' })
+        .eq('id', meetingId);
+
+      if (rejectError) {
+        console.error('商談の却下に失敗しました:', rejectError.message);
+        return NextResponse.json(
+          { data: null, error: '商談の却下に失敗しました' },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(
+        { data: null, error: null } as unknown as ApiResult<ApprovalRow>,
+        { status: 200 }
+      );
+    }
 
     // 既に承認済みかチェック（重複承認防止）
     const { data: existingApproval } = await supabase

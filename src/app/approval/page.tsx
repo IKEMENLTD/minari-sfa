@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle, AlertCircle, RefreshCw, X } from 'lucide-react';
 import { ApprovalCard } from '@/components/meetings/approval-card';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -70,11 +70,17 @@ export default function ApprovalPage() {
       }
       const json: { data: ProcessResult } = await res.json();
       const result = json.data;
-      setProcessMessage(
+
+      let message =
         result.processedCount > 0
           ? `${result.processedCount}件の議事録を取り込みました`
-          : '新しい議事録はありませんでした'
-      );
+          : '新しい議事録はありませんでした';
+
+      if (result.errors.length > 0) {
+        message += `（${result.errors.length}件エラー）`;
+      }
+
+      setProcessMessage(message);
       // 取り込み後にpending一覧をリロード
       await fetchData();
     } catch (e) {
@@ -91,26 +97,42 @@ export default function ApprovalPage() {
     correctedCompany?: string,
     correctionNote?: string,
   ) => {
-    try {
-      const res = await fetch('/api/approval', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          meetingId,
-          isCorrect,
-          correctedCompany,
-          correctionNote,
-        }),
-      });
-      if (!res.ok) {
-        const errorJson: { error: string } = await res.json();
-        throw new Error(errorJson.error || '承認処理に失敗しました');
-      }
-      setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
-    } catch (e) {
-      const message = e instanceof Error ? e.message : '承認処理に失敗しました';
-      setError(message);
+    setProcessMessage(null);
+    const res = await fetch('/api/approval', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        meetingId,
+        isCorrect,
+        correctedCompany,
+        correctionNote,
+      }),
+    });
+    if (!res.ok) {
+      const errorJson: { error: string } = await res.json();
+      throw new Error(errorJson.error || '承認処理に失敗しました');
     }
+    // 承認後にcompaniesをリフレッシュ（新規企業が登録された可能性）
+    setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
+    await fetchData();
+  };
+
+  const handleReject = async (meetingId: string) => {
+    setProcessMessage(null);
+    const res = await fetch('/api/approval', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        meetingId,
+        isCorrect: false,
+        action: 'reject',
+      }),
+    });
+    if (!res.ok) {
+      const errorJson: { error: string } = await res.json();
+      throw new Error(errorJson.error || '却下処理に失敗しました');
+    }
+    setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
   };
 
   const pendingCount = meetings.length;
@@ -121,7 +143,7 @@ export default function ApprovalPage() {
         <div>
           <h1 className="text-xl font-semibold text-text">承認フロー</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            本日の承認待ち: {loading ? '-' : pendingCount}件
+            承認待ち一覧: {loading ? '-' : pendingCount}件
           </p>
         </div>
         <Button
@@ -146,7 +168,15 @@ export default function ApprovalPage() {
       {error && (
         <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
+          <span className="flex-1">{error}</span>
+          <button
+            type="button"
+            aria-label="閉じる"
+            className="ml-auto shrink-0 rounded p-0.5 hover:bg-red-100"
+            onClick={() => setError(null)}
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 
@@ -169,6 +199,7 @@ export default function ApprovalPage() {
               meeting={meeting}
               companies={companies}
               onApprove={handleApprove}
+              onReject={handleReject}
             />
           ))}
         </div>
