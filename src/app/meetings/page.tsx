@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { MeetingList } from '@/components/meetings/meeting-list';
 import { Select } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { SkeletonTableRow } from '@/components/ui/skeleton';
 import { Table, TableHead, TableBody, TableHeader } from '@/components/ui/table';
 import { AlertCircle } from 'lucide-react';
@@ -22,26 +23,47 @@ export default function MeetingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('');
+  const abortRef = useRef<AbortController | null>(null);
+
+  const fetchMeetings = useCallback(async () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setLoading(true);
+    setError(null);
+
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter) params.set('approval_status', statusFilter);
+      const res = await fetch(`/api/meetings?${params.toString()}`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error('データの取得に失敗しました');
+      const json: { data: MeetingRow[] } = await res.json();
+      setMeetings(json.data);
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        setError('タイムアウトしました。再試行してください。');
+      } else {
+        setError(e instanceof Error ? e.message : 'エラーが発生しました');
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      setLoading(false);
+    }
+  }, [statusFilter]);
 
   useEffect(() => {
-    const fetchMeetings = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams();
-        if (statusFilter) params.set('approval_status', statusFilter);
-        const res = await fetch(`/api/meetings?${params.toString()}`);
-        if (!res.ok) throw new Error('データの取得に失敗しました');
-        const json: { data: MeetingRow[] } = await res.json();
-        setMeetings(json.data);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'エラーが発生しました');
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchMeetings();
-  }, [statusFilter]);
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, [fetchMeetings]);
 
   return (
     <div className="space-y-6">
@@ -58,9 +80,16 @@ export default function MeetingsPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {error}
+          </div>
+          <div>
+            <Button variant="secondary" size="sm" onClick={fetchMeetings}>
+              再試行
+            </Button>
+          </div>
         </div>
       )}
 

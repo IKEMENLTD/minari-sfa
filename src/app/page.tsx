@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import {
   CheckCircle,
@@ -10,8 +10,9 @@ import {
   AlertCircle,
   ArrowRight,
 } from 'lucide-react';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableHead,
@@ -69,57 +70,83 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setLoading(true);
+    setError(null);
+
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const [meetingsRes, dealsRes] = await Promise.all([
+        fetch('/api/meetings', { signal: controller.signal }),
+        fetch('/api/deals', { signal: controller.signal }),
+      ]);
+      if (!meetingsRes.ok || !dealsRes.ok) {
+        throw new Error('データの取得に失敗しました');
+      }
+      const meetingsJson: { data: MeetingRow[] } = await meetingsRes.json();
+      const dealsJson: { data: DealWithDetails[] } = await dealsRes.json();
+
+      const meetings = meetingsJson.data;
+      const deals = dealsJson.data;
+
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const pending = meetings.filter((m) => m.approval_status === 'pending');
+      const weeklyMeetings = meetings.filter(
+        (m) => new Date(m.meeting_date) >= weekAgo,
+      );
+
+      setData({
+        pendingCount: pending.length,
+        activeDealsCount: deals.length,
+        weeklyMeetingsCount: weeklyMeetings.length,
+        recentPending: pending.slice(0, 5),
+        recentDeals: deals.slice(0, 5),
+      });
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        setError('タイムアウトしました。再試行してください。');
+      } else {
+        setError(e instanceof Error ? e.message : 'エラーが発生しました');
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchDashboard = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [meetingsRes, dealsRes] = await Promise.all([
-          fetch('/api/meetings'),
-          fetch('/api/deals'),
-        ]);
-        if (!meetingsRes.ok || !dealsRes.ok) {
-          throw new Error('データの取得に失敗しました');
-        }
-        const meetingsJson: { data: MeetingRow[] } = await meetingsRes.json();
-        const dealsJson: { data: DealWithDetails[] } = await dealsRes.json();
-
-        const meetings = meetingsJson.data;
-        const deals = dealsJson.data;
-
-        const now = new Date();
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-        const pending = meetings.filter((m) => m.approval_status === 'pending');
-        const weeklyMeetings = meetings.filter(
-          (m) => new Date(m.meeting_date) >= weekAgo,
-        );
-
-        setData({
-          pendingCount: pending.length,
-          activeDealsCount: deals.length,
-          weeklyMeetingsCount: weeklyMeetings.length,
-          recentPending: pending.slice(0, 5),
-          recentDeals: deals.slice(0, 5),
-        });
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'エラーが発生しました');
-      } finally {
-        setLoading(false);
-      }
+    fetchData();
+    return () => {
+      abortRef.current?.abort();
     };
-    fetchDashboard();
-  }, []);
+  }, [fetchData]);
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-text">ダッシュボード</h1>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {error}
+          </div>
+          <div>
+            <Button variant="secondary" size="sm" onClick={fetchData}>
+              再試行
+            </Button>
+          </div>
         </div>
       )}
 
