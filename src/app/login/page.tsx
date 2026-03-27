@@ -15,17 +15,22 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
 
-    if (res.ok) {
-      router.push('/');
-      router.refresh();
-    } else {
-      setError('パスワードが正しくありません');
+      if (res.ok) {
+        router.push('/');
+        router.refresh();
+      } else {
+        setError('パスワードが正しくありません');
+        setLoading(false);
+      }
+    } catch {
+      setError('サーバーに接続できません。しばらく待ってから再試行してください。');
       setLoading(false);
     }
   }
