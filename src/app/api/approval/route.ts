@@ -116,7 +116,7 @@ export async function POST(
         is_correct: isCorrect,
         corrected_company: correctedCompany ?? null,
         correction_note: correctionNote ?? null,
-        approved_by: authResult.userId,
+        approved_by: authResult.userId === 'mock-user-id' ? null : authResult.userId,
       })
       .select('id, meeting_id, ai_estimated_company, is_correct, corrected_company, correction_note, approved_by, created_at')
       .single();
