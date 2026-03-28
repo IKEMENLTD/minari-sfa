@@ -283,8 +283,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
           isInternal: analysis.isInternal,
         });
       } catch (err) {
-        console.error(`PROUD ${file.id} の処理失敗:`, err instanceof Error ? err.message : err);
-        errors.push(`PROUD ${file.id} の処理失敗`);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`PROUD ${file.id} の処理失敗:`, errMsg);
+        errors.push(`PROUD ${file.title}: ${errMsg}`);
       }
     }
 
