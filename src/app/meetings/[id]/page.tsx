@@ -28,7 +28,7 @@ export default function MeetingDetailPage() {
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const res = await fetch(`/api/meetings/${id}`, {
+      const res = await fetch(`/api/meetings/${id}?include_transcript=true`, {
         signal: controller.signal,
       });
       if (!res.ok) {

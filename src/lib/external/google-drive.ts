@@ -148,21 +148,25 @@ export async function fetchProudNoteFiles(): Promise<ProudNoteFile[]> {
       );
 
       if (docResponse.ok) {
-        const docData = (await docResponse.json()) as { body: { content: Array<{ paragraph?: { elements: Array<{ textRun?: { content: string } }> } }> } };
-        const content = docData.body.content
+        const docData = (await docResponse.json()) as {
+          body?: { content?: Array<{ paragraph?: { elements?: Array<{ textRun?: { content?: string } }> } }> }
+        };
+        const content = (docData.body?.content ?? [])
           .map((block) =>
-            block.paragraph?.elements
+            (block.paragraph?.elements ?? [])
               .map((el) => el.textRun?.content ?? '')
-              .join('') ?? ''
+              .join('')
           )
           .join('');
 
         files.push({
           id: file.id,
           title: file.name,
-          date: file.modifiedTime.split('T')[0],
-          content,
+          date: file.modifiedTime?.split('T')[0] ?? new Date().toISOString().split('T')[0],
+          content: content || `(ドキュメント「${file.name}」の内容を取得できませんでした)`,
         });
+      } else {
+        console.error(`Google Docs ${file.id} の取得失敗: ${docResponse.status}`);
       }
     }
 
