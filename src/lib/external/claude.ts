@@ -77,7 +77,12 @@ async function callClaude(
   if (!textContent) {
     throw new Error('Claude API から有効なテキストレスポンスがありませんでした');
   }
-  return textContent.text;
+  // マークダウンのコードブロック(```json ... ```)を除去
+  let text = textContent.text.trim();
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+  return text;
 }
 
 // ---------------------------------------------------------------------------
