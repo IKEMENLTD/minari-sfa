@@ -18,8 +18,8 @@ const JAMROLL_API_BASE = 'https://api.jamroll.jp/v1';
  */
 export async function fetchNewTranscripts(from?: string, to?: string): Promise<JamrollTranscript[]> {
   const apiKey = process.env.JAMROLL_API_KEY;
-  if (!apiKey) {
-    throw new Error('環境変数 JAMROLL_API_KEY が設定されていません');
+  if (!apiKey || apiKey === 'your-jamroll-api-key') {
+    throw new Error('JAMROLL_API_KEY が未設定です');
   }
 
   const controller = new AbortController();

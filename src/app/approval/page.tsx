@@ -65,11 +65,14 @@ export default function ApprovalPage() {
     setProcessing(true);
     setProcessMessage('議事録を取り込み中...');
     setError(null);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
     try {
       const res = await fetch('/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
+        signal: controller.signal,
       });
       if (!res.ok) {
         const errorJson: { error: string } = await res.json();
@@ -91,9 +94,14 @@ export default function ApprovalPage() {
       // 取り込み後にpending一覧をリロード
       await fetchData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : '議事録の取り込みに失敗しました');
+      if (e instanceof Error && e.name === 'AbortError') {
+        setError('タイムアウトしました（30秒）。再試行してください。');
+      } else {
+        setError(e instanceof Error ? e.message : '議事録の取り込みに失敗しました');
+      }
       setProcessMessage(null);
     } finally {
+      clearTimeout(timer);
       setProcessing(false);
     }
   };
@@ -103,11 +111,14 @@ export default function ApprovalPage() {
     setProcessing(true);
     setProcessMessage('過去の議事録を取り込み中...');
     setError(null);
+    const rangeController = new AbortController();
+    const rangeTimer = setTimeout(() => rangeController.abort(), 30000);
     try {
       const res = await fetch('/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: dateFrom, to: dateTo }),
+        signal: rangeController.signal,
       });
       if (!res.ok) {
         const errorJson: { error: string } = await res.json();
@@ -131,9 +142,14 @@ export default function ApprovalPage() {
       setDateTo('');
       await fetchData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : '議事録の取り込みに失敗しました');
+      if (e instanceof Error && e.name === 'AbortError') {
+        setError('タイムアウトしました（30秒）。再試行してください。');
+      } else {
+        setError(e instanceof Error ? e.message : '議事録の取り込みに失敗しました');
+      }
       setProcessMessage(null);
     } finally {
+      clearTimeout(rangeTimer);
       setProcessing(false);
     }
   };
