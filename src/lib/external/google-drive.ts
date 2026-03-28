@@ -186,7 +186,6 @@ export async function appendToDocument(
   docId: string,
   content: string
 ): Promise<void> {
-  // docId のバリデーション（パストラバーサル・URLインジェクション防止）
   if (!DOC_ID_PATTERN.test(docId)) {
     throw new Error('無効な Google Doc ID です');
   }
@@ -221,6 +220,82 @@ export async function appendToDocument(
 
     if (!response.ok) {
       throw new Error(`Google Docs API 追記エラー (${response.status})`);
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Google ドキュメントの内容を全面置換する（重複追記を防止）
+ * 既存の内容を全削除してから新しい内容を挿入する
+ */
+export async function replaceDocumentContent(
+  docId: string,
+  content: string
+): Promise<void> {
+  if (!DOC_ID_PATTERN.test(docId)) {
+    throw new Error('無効な Google Doc ID です');
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    const token = await getAccessToken(controller.signal);
+
+    // 1. ドキュメントの現在の内容長を取得
+    const getRes = await fetch(`${GOOGLE_DOCS_API}/${docId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+
+    if (!getRes.ok) {
+      throw new Error(`Google Docs API 取得エラー (${getRes.status})`);
+    }
+
+    const docData = (await getRes.json()) as {
+      body?: { content?: Array<{ endIndex?: number }> }
+    };
+    const bodyContent = docData.body?.content ?? [];
+    const lastElement = bodyContent[bodyContent.length - 1];
+    const endIndex = lastElement?.endIndex ?? 1;
+
+    // 2. 既存コンテンツを削除（endIndex > 2 なら内容がある）
+    const requests: Array<Record<string, unknown>> = [];
+    if (endIndex > 2) {
+      requests.push({
+        deleteContentRange: {
+          range: { startIndex: 1, endIndex: endIndex - 1 },
+        },
+      });
+    }
+
+    // 3. 新しいコンテンツを挿入
+    requests.push({
+      insertText: {
+        location: { index: 1 },
+        text: content,
+      },
+    });
+
+    const updateRes = await fetch(
+      `${GOOGLE_DOCS_API}/${docId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ requests }),
+        signal: controller.signal,
+      }
+    );
+
+    if (!updateRes.ok) {
+      const errBody = await updateRes.text();
+      console.error('Google Docs 置換エラー詳細:', errBody);
+      throw new Error(`Google Docs API 置換エラー (${updateRes.status})`);
     }
   } finally {
     clearTimeout(timeoutId);
