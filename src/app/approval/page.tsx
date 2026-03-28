@@ -216,7 +216,7 @@ export default function ApprovalPage() {
             承認待ち一覧: {loading ? '-' : pendingCount}件
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <Button
             variant="primary"
             size="sm"
@@ -241,7 +241,7 @@ export default function ApprovalPage() {
 
       {showDateRange && (
         <div className="border border-border bg-surface p-4">
-          <div className="flex items-end gap-3">
+          <div className="grid grid-cols-2 sm:flex sm:items-end gap-3">
             <div>
               <label htmlFor="date-from" className="block text-xs text-text-secondary mb-1">
                 開始日
@@ -252,7 +252,7 @@ export default function ApprovalPage() {
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
                 disabled={processing}
-                className="border border-border bg-surface px-2 py-1 text-sm text-text"
+                className="w-full border border-border bg-surface px-2 py-1 text-sm text-text"
               />
             </div>
             <div>
@@ -265,7 +265,7 @@ export default function ApprovalPage() {
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
                 disabled={processing}
-                className="border border-border bg-surface px-2 py-1 text-sm text-text"
+                className="w-full border border-border bg-surface px-2 py-1 text-sm text-text"
               />
             </div>
             <Button
@@ -274,6 +274,7 @@ export default function ApprovalPage() {
               onClick={handleProcessRange}
               disabled={processing || !dateFrom || !dateTo}
               loading={processing}
+              className="col-span-1"
             >
               取り込む
             </Button>
@@ -286,6 +287,7 @@ export default function ApprovalPage() {
                 setDateTo('');
               }}
               disabled={processing}
+              className="col-span-1"
             >
               キャンセル
             </Button>

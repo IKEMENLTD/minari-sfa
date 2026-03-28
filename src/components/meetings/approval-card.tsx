@@ -135,7 +135,7 @@ function ApprovalCard({ meeting, companies, onApprove, onReject }: ApprovalCardP
         <>
           <CardContent>
             <div className="space-y-3">
-              <div className="flex gap-4 text-sm">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-sm">
                 <label className="flex items-center gap-1.5 cursor-pointer">
                   <input
                     type="radio"

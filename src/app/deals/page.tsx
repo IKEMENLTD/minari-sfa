@@ -60,7 +60,7 @@ export default function DealsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold text-text">案件管理</h1>
-        <div className="w-64">
+        <div className="w-full sm:w-64">
           <Input
             placeholder="企業名で検索..."
             value={search}
