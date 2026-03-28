@@ -134,7 +134,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-text">ダッシュボード</h1>
+      <h1 className="text-xl font-semibold text-text">ホーム</h1>
 
       {error && (
         <div className="flex flex-col gap-3">

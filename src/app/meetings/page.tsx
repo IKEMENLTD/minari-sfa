@@ -88,7 +88,7 @@ function MeetingsContent() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text">議事録一覧</h1>
+          <h1 className="text-xl font-semibold text-text">商談記録</h1>
           {companyId && (
             <p className="mt-0.5 text-xs text-text-secondary">
               企業でフィルタ中
@@ -154,7 +154,7 @@ export default function MeetingsPage() {
   return (
     <Suspense fallback={
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold text-text">議事録一覧</h1>
+        <h1 className="text-xl font-semibold text-text">商談記録</h1>
         <Table>
           <TableHead>
             <tr>

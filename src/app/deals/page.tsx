@@ -59,7 +59,7 @@ export default function DealsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold text-text">案件管理</h1>
+        <h1 className="text-xl font-semibold text-text">案件ボード</h1>
         <div className="w-full sm:w-64">
           <Input
             placeholder="企業名で検索..."

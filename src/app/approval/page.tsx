@@ -211,7 +211,7 @@ export default function ApprovalPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text">承認フロー</h1>
+          <h1 className="text-xl font-semibold text-text">取り込み・承認</h1>
           <p className="mt-1 text-sm text-text-secondary">
             承認待ち一覧: {loading ? '-' : pendingCount}件
           </p>

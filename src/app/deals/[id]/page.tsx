@@ -60,7 +60,7 @@ export default async function DealDetailPage({
       {/* パンくず */}
       <nav className="flex items-center gap-1 text-sm text-text-secondary">
         <Link href="/deals" className="hover:text-accent">
-          案件管理
+          案件ボード
         </Link>
         <ChevronRight className="h-3.5 w-3.5" />
         <span className="text-text">{data.deal.company?.name ?? '未登録'}</span>
