@@ -28,8 +28,12 @@ export default function ApprovalPage() {
   const [processing, setProcessing] = useState(false);
   const [processMessage, setProcessMessage] = useState<string | null>(null);
   const [showDateRange, setShowDateRange] = useState(false);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    return d.toISOString().split('T')[0];
+  });
+  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
