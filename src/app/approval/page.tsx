@@ -84,7 +84,7 @@ export default function ApprovalPage() {
           : '新しい議事録はありませんでした';
 
       if (result.errors.length > 0) {
-        message += `（${result.errors.length}件エラー）`;
+        message += `\nエラー: ${result.errors.join(' / ')}`;
       }
 
       setProcessMessage(message);
@@ -278,8 +278,8 @@ export default function ApprovalPage() {
       )}
 
       {processMessage && !error && (
-        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-          <CheckCircle className="h-4 w-4 shrink-0" />
+        <div className="flex items-start gap-2 border border-border bg-surface px-4 py-3 text-sm text-text-secondary whitespace-pre-line">
+          <CheckCircle className="h-4 w-4 shrink-0 mt-0.5" />
           {processMessage}
         </div>
       )}

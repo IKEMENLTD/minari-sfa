@@ -129,8 +129,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
     try {
       jamrollTranscripts = await fetchNewTranscripts(from, to);
     } catch (err) {
-      console.error('Jamroll データ取得失敗:', err instanceof Error ? err.message : err);
-      errors.push('Jamroll データ取得失敗');
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Jamroll データ取得失敗:', msg);
+      errors.push(`Jamroll: ${msg}`);
     }
 
     // 2. PROUD Note からデータ取得
@@ -148,8 +149,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
         proudFiles = allProudFiles;
       }
     } catch (err) {
-      console.error('PROUD Note データ取得失敗:', err instanceof Error ? err.message : err);
-      errors.push('PROUD Note データ取得失敗');
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('PROUD Note データ取得失敗:', msg);
+      errors.push(`PROUD Note: ${msg}`);
     }
 
     // 3. Jamroll 議事録を処理
