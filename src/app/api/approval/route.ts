@@ -225,8 +225,33 @@ export async function POST(
             .eq('meeting_id', meetingId)
             .single();
 
-          const content = summary?.summary_text ?? `商談日: ${meeting.meeting_date as string}`;
-          await appendToDocument(googleDoc.doc_id as string, content);
+          // 詳細取得（参加者情報を含む最新のmeetingデータ）
+          const { data: fullMeeting } = await supabase
+            .from('meetings')
+            .select('meeting_date, participants, source')
+            .eq('id', meetingId)
+            .single();
+
+          const meetingDate = (fullMeeting?.meeting_date as string) ?? '';
+          const participants = (fullMeeting?.participants as string[]) ?? [];
+          const source = (fullMeeting?.source as string) ?? '';
+          const summaryText = summary?.summary_text ?? '';
+
+          // NotebookLM対応の構造化フォーマット
+          const docContent = [
+            `========================================`,
+            `商談日: ${meetingDate}`,
+            `企業名: ${confirmedCompanyName}`,
+            `参加者: ${participants.join(', ')}`,
+            `ソース: ${source}`,
+            `承認日: ${new Date().toISOString().split('T')[0]}`,
+            `========================================`,
+            '',
+            summaryText,
+            '',
+          ].join('\n');
+
+          await appendToDocument(googleDoc.doc_id as string, docContent);
         }
       } catch (docError) {
         const docErrMsg = docError instanceof Error ? docError.message : '不明なエラー';
