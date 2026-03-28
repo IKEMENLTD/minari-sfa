@@ -9,6 +9,7 @@ import type { MeetingRow, CompanyRow } from '@/types';
 
 interface ProcessResult {
   processedCount: number;
+  remaining: number;
   results: Array<{
     sourceId: string;
     source: 'jamroll' | 'proud';
@@ -61,97 +62,81 @@ export default function ApprovalPage() {
     fetchData();
   }, [fetchData]);
 
-  const handleProcess = async () => {
+  const processLoop = async (body: Record<string, unknown>) => {
     setProcessing(true);
-    setProcessMessage('議事録を取り込み中...');
     setError(null);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
+    let totalProcessed = 0;
+    const allErrors: string[] = [];
+    const MAX_ITERATIONS = 30;
+
     try {
-      const res = await fetch('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        const errorJson: { error: string } = await res.json();
-        throw new Error(errorJson.error || '議事録の取り込みに失敗しました');
+      for (let i = 0; i < MAX_ITERATIONS; i++) {
+        setProcessMessage(`取り込み中... (${totalProcessed}件完了${i > 0 ? `、${i + 1}回目` : ''})`);
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30000);
+
+        try {
+          const res = await fetch('/api/process', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, limit: 1 }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timer);
+
+          if (!res.ok) {
+            const errorJson: { error: string } = await res.json();
+            throw new Error(errorJson.error || '議事録の取り込みに失敗しました');
+          }
+
+          const json: { data: ProcessResult } = await res.json();
+          const result = json.data;
+
+          totalProcessed += result.processedCount;
+          allErrors.push(...result.errors);
+
+          // 処理するものがなくなったら終了
+          if (result.processedCount === 0 && result.remaining === 0) {
+            break;
+          }
+          // 処理したが残りがなければ終了
+          if (result.remaining === 0) {
+            break;
+          }
+        } catch (e) {
+          clearTimeout(timer);
+          if (e instanceof Error && e.name === 'AbortError') {
+            allErrors.push(`${i + 1}回目: タイムアウト`);
+          } else {
+            allErrors.push(e instanceof Error ? e.message : 'エラー');
+          }
+          break;
+        }
       }
-      const json: { data: ProcessResult } = await res.json();
-      const result = json.data;
 
-      let message =
-        result.processedCount > 0
-          ? `${result.processedCount}件の議事録を取り込みました`
-          : '新しい議事録はありませんでした';
+      let message = totalProcessed > 0
+        ? `${totalProcessed}件の議事録を取り込みました`
+        : '新しい議事録はありませんでした';
 
-      if (result.errors.length > 0) {
-        message += `\nエラー: ${result.errors.join(' / ')}`;
+      if (allErrors.length > 0) {
+        message += `\nエラー: ${allErrors.join(' / ')}`;
       }
 
       setProcessMessage(message);
-      // 取り込み後にpending一覧をリロード
       await fetchData();
-    } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') {
-        setError('タイムアウトしました（30秒）。再試行してください。');
-      } else {
-        setError(e instanceof Error ? e.message : '議事録の取り込みに失敗しました');
-      }
-      setProcessMessage(null);
     } finally {
-      clearTimeout(timer);
       setProcessing(false);
     }
   };
 
+  const handleProcess = () => processLoop({});
+
   const handleProcessRange = async () => {
     if (!dateFrom || !dateTo) return;
-    setProcessing(true);
-    setProcessMessage('過去の議事録を取り込み中...');
-    setError(null);
-    const rangeController = new AbortController();
-    const rangeTimer = setTimeout(() => rangeController.abort(), 30000);
-    try {
-      const res = await fetch('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: dateFrom, to: dateTo }),
-        signal: rangeController.signal,
-      });
-      if (!res.ok) {
-        const errorJson: { error: string } = await res.json();
-        throw new Error(errorJson.error || '議事録の取り込みに失敗しました');
-      }
-      const json: { data: ProcessResult } = await res.json();
-      const result = json.data;
-
-      let message =
-        result.processedCount > 0
-          ? `${result.processedCount}件の議事録を取り込みました`
-          : '指定期間に新しい議事録はありませんでした';
-
-      if (result.errors.length > 0) {
-        message += `\nエラー: ${result.errors.join(' / ')}`;
-      }
-
-      setProcessMessage(message);
-      setShowDateRange(false);
-      setDateFrom('');
-      setDateTo('');
-      await fetchData();
-    } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') {
-        setError('タイムアウトしました（30秒）。再試行してください。');
-      } else {
-        setError(e instanceof Error ? e.message : '議事録の取り込みに失敗しました');
-      }
-      setProcessMessage(null);
-    } finally {
-      clearTimeout(rangeTimer);
-      setProcessing(false);
-    }
+    await processLoop({ from: dateFrom, to: dateTo });
+    setShowDateRange(false);
   };
 
   const handleApprove = async (

@@ -13,6 +13,7 @@ import type { ApiResult } from '@/types';
 
 interface ProcessResult {
   processedCount: number;
+  remaining: number;
   results: Array<{
     sourceId: string;
     source: 'jamroll' | 'proud';
@@ -102,6 +103,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
   const processSchema = z.object({
     from: z.string().date().optional(),
     to: z.string().date().optional(),
+    limit: z.number().int().min(1).max(30).optional(),
   }).strict().optional();
 
   try {
@@ -119,6 +121,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
 
     const from = bodyResult.data?.from;
     const to = bodyResult.data?.to;
+    const limit = bodyResult.data?.limit ?? 1;
 
     const supabase = createServerSupabaseClient();
     const results: ProcessResult['results'] = [];
@@ -154,8 +157,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
       errors.push(`PROUD Note: ${msg}`);
     }
 
+    // 未処理件数を追跡
+    let skippedJamroll = 0;
+    let skippedProud = 0;
+
     // 3. Jamroll 議事録を処理
     for (const transcript of jamrollTranscripts) {
+      if (results.length >= limit) {
+        skippedJamroll++;
+        continue;
+      }
       try {
         // 既に処理済みかチェック
         const { data: existing } = await supabase
@@ -223,6 +234,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
 
     // 4. PROUD Note ファイルを処理
     for (const file of proudFiles) {
+      if (results.length >= limit) {
+        skippedProud++;
+        continue;
+      }
       try {
         // 既に処理済みかチェック
         const { data: existing } = await supabase
@@ -291,6 +306,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
 
     const processResult: ProcessResult = {
       processedCount: results.length,
+      remaining: skippedJamroll + skippedProud,
       results,
       errors,
     };
