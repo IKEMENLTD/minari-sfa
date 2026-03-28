@@ -1,5 +1,4 @@
 import { API_TIMEOUT_MS } from '@/lib/constants';
-import { isMockMode, generateId } from '@/lib/utils';
 import type { ProudNoteFile } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -67,27 +66,6 @@ async function getAccessToken(signal: AbortSignal): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// モック実装
-// ---------------------------------------------------------------------------
-
-function getMockProudNoteFiles(): ProudNoteFile[] {
-  return [
-    {
-      id: 'proud-mock-001',
-      title: '株式会社DEF様 フォローアップ',
-      date: '2026-03-21',
-      content: '先日のデモのフィードバックを受けて追加質問に回答。導入時期は4月を目処に検討中とのこと。',
-    },
-    {
-      id: 'proud-mock-002',
-      title: '株式会社GHI様 課題ヒアリング',
-      date: '2026-03-23',
-      content: '新規案件。現在他社ツールを利用中だが乗り換えを検討。コスト面と機能面での比較資料を求められた。',
-    },
-  ];
-}
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -95,10 +73,6 @@ function getMockProudNoteFiles(): ProudNoteFile[] {
  * PROUD Note ファイル一覧を取得する
  */
 export async function fetchProudNoteFiles(): Promise<ProudNoteFile[]> {
-  if (isMockMode()) {
-    return getMockProudNoteFiles();
-  }
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
@@ -181,11 +155,6 @@ export async function appendToDocument(
     throw new Error('無効な Google Doc ID です');
   }
 
-  if (isMockMode()) {
-    console.log('[モック] Google Docs 追記: docId=%s, 内容=%s...', docId.replace(/[\r\n\x1b]/g, ''), content.slice(0, 50).replace(/[\r\n\x1b]/g, ''));
-    return;
-  }
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
@@ -232,15 +201,6 @@ export async function createDocument(
   // folderId のバリデーション
   if (!DOC_ID_PATTERN.test(folderId)) {
     throw new Error('無効な Google Drive フォルダ ID です');
-  }
-
-  if (isMockMode()) {
-    const mockId = generateId();
-    console.log('[モック] Google Docs 作成: 企業=%s, フォルダ=%s', companyName.replace(/[\r\n\x1b]/g, ''), folderId.replace(/[\r\n\x1b]/g, ''));
-    return {
-      docId: mockId,
-      docUrl: `https://docs.google.com/document/d/${mockId}/edit`,
-    };
   }
 
   const controller = new AbortController();
