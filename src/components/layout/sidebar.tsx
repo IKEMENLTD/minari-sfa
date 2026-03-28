@@ -21,10 +21,10 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: '/', label: 'ダッシュボード', icon: LayoutDashboard },
-  { href: '/meetings', label: '議事録', icon: FileText },
-  { href: '/approval', label: '承認', icon: CheckCircle },
-  { href: '/deals', label: '案件管理', icon: Briefcase },
+  { href: '/', label: 'ホーム', icon: LayoutDashboard },
+  { href: '/meetings', label: '商談記録', icon: FileText },
+  { href: '/approval', label: '取り込み・承認', icon: CheckCircle },
+  { href: '/deals', label: '案件ボード', icon: Briefcase },
 ];
 
 function Sidebar() {
