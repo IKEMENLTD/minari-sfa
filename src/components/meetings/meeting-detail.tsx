@@ -2,14 +2,16 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import type { MeetingDetail as MeetingDetailType } from '@/types';
 import type { BadgeVariant } from '@/components/ui/badge';
 
 interface MeetingDetailProps {
   meeting: MeetingDetailType;
+  onResummarize?: () => void;
 }
 
 const statusLabel: Record<string, string> = {
@@ -24,8 +26,31 @@ const statusVariant: Record<string, BadgeVariant> = {
   rejected: 'danger',
 };
 
-function MeetingDetailView({ meeting }: MeetingDetailProps) {
+function MeetingDetailView({ meeting, onResummarize }: MeetingDetailProps) {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [resummarizing, setResummarizing] = useState(false);
+  const [resummarizeMessage, setResummarizeMessage] = useState<string | null>(null);
+
+  const handleResummarize = async () => {
+    setResummarizing(true);
+    setResummarizeMessage(null);
+    try {
+      const res = await fetch(`/api/meetings/${meeting.id}/resummarize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        const errJson: { error: string } = await res.json();
+        throw new Error(errJson.error || '再生成に失敗しました');
+      }
+      setResummarizeMessage('要約を再生成しました。ページを再読み込みしてください。');
+      if (onResummarize) onResummarize();
+    } catch (e) {
+      setResummarizeMessage(e instanceof Error ? e.message : '再生成に失敗しました');
+    } finally {
+      setResummarizing(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -76,12 +101,27 @@ function MeetingDetailView({ meeting }: MeetingDetailProps) {
       {meeting.summary && (
         <Card>
           <CardHeader>
-            <h2 className="text-base font-semibold text-text">要約</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-text">要約</h2>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleResummarize}
+                loading={resummarizing}
+                disabled={resummarizing}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                再生成
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-text whitespace-pre-wrap leading-relaxed">
               {meeting.summary.summary_text}
             </p>
+            {resummarizeMessage && (
+              <p className="mt-3 text-xs text-text-secondary">{resummarizeMessage}</p>
+            )}
           </CardContent>
         </Card>
       )}

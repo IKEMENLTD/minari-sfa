@@ -104,7 +104,7 @@ export default function MeetingDetailPage() {
         </span>
       </nav>
 
-      <MeetingDetailView meeting={meeting} />
+      <MeetingDetailView meeting={meeting} onResummarize={fetchMeeting} />
     </div>
   );
 }
