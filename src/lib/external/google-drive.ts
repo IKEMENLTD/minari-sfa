@@ -116,7 +116,7 @@ export async function fetchProudNoteFiles(): Promise<ProudNoteFile[]> {
       ? `'${proudFolderId}' in parents and `
       : '';
     const response = await fetch(
-      `${GOOGLE_DRIVE_API}?q=${encodeURIComponent(`${folderFilter}mimeType='application/vnd.google-apps.document'`)}&orderBy=modifiedTime desc`,
+      `${GOOGLE_DRIVE_API}?q=${encodeURIComponent(`${folderFilter}mimeType='application/vnd.google-apps.document'`)}&orderBy=modifiedTime desc&fields=${encodeURIComponent('files(id,name,modifiedTime)')}`,
       {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
