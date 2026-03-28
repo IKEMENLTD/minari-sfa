@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
+import { validateAuth, isAuthError } from '@/lib/auth';
 import { summarizeMeeting } from '@/lib/external/claude';
+import { exportMeetingToDoc } from '@/lib/export-to-doc';
 import type { ApiResult } from '@/types';
 
 const uuidSchema = z.string().uuid();
@@ -79,6 +80,13 @@ export async function POST(
         ai_estimated_company: analysis.estimatedCompany,
       })
       .eq('id', id);
+
+    // Google Docsに自動書き出し
+    try {
+      await exportMeetingToDoc(id);
+    } catch (docErr) {
+      console.error('Google Docs自動書き出し失敗:', docErr instanceof Error ? docErr.message : docErr);
+    }
 
     return NextResponse.json({
       data: { summary_text: analysis.summary },

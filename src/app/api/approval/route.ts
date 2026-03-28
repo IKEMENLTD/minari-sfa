@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
-import { appendToDocument, createDocument } from '@/lib/external/google-drive';
 import { judgeSalesPhase } from '@/lib/external/claude';
+import { exportMeetingToDoc } from '@/lib/export-to-doc';
 import type { ApprovalRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -17,12 +17,6 @@ const approvalSchema = z.object({
   correctionNote: z.string().max(2000).optional(),
   action: z.enum(['approve', 'reject']).optional(),
 }).strict();
-
-// ---------------------------------------------------------------------------
-// Google Drive フォルダ ID（環境変数から取得）
-// ---------------------------------------------------------------------------
-
-const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID ?? '';
 
 // ---------------------------------------------------------------------------
 // POST /api/approval - 承認処理
@@ -165,21 +159,7 @@ export async function POST(
         } else {
           companyId = newCompany.id as string;
 
-          // 新規企業の場合、Googleドキュメントも自動作成
-          if (GOOGLE_DRIVE_FOLDER_ID) {
-            try {
-              const docResult = await createDocument(confirmedCompanyName, GOOGLE_DRIVE_FOLDER_ID);
-              await supabase.from('google_docs').insert({
-                company_id: companyId,
-                doc_url: docResult.docUrl,
-                doc_id: docResult.docId,
-                folder: GOOGLE_DRIVE_FOLDER_ID,
-              });
-            } catch (docCreateErr) {
-              const errMsg = docCreateErr instanceof Error ? docCreateErr.message : '不明なエラー';
-              console.error('Google Docs 作成に失敗しました:', errMsg);
-            }
-          }
+          // Google Docsへの書き出しは承認ステータス更新後に一括実行
         }
       }
     }
@@ -209,54 +189,11 @@ export async function POST(
       );
     }
 
-    // --- Google ドキュメント追記 ---
-    if (companyId && confirmedCompanyName !== '(社内)') {
-      try {
-        const { data: googleDoc } = await supabase
-          .from('google_docs')
-          .select('doc_id')
-          .eq('company_id', companyId)
-          .single();
-
-        if (googleDoc) {
-          const { data: summary } = await supabase
-            .from('summaries')
-            .select('summary_text')
-            .eq('meeting_id', meetingId)
-            .single();
-
-          // 詳細取得（参加者情報を含む最新のmeetingデータ）
-          const { data: fullMeeting } = await supabase
-            .from('meetings')
-            .select('meeting_date, participants, source')
-            .eq('id', meetingId)
-            .single();
-
-          const meetingDate = (fullMeeting?.meeting_date as string) ?? '';
-          const participants = (fullMeeting?.participants as string[]) ?? [];
-          const source = (fullMeeting?.source as string) ?? '';
-          const summaryText = summary?.summary_text ?? '';
-
-          // NotebookLM対応の構造化フォーマット
-          const docContent = [
-            `========================================`,
-            `商談日: ${meetingDate}`,
-            `企業名: ${confirmedCompanyName}`,
-            `参加者: ${participants.join(', ')}`,
-            `ソース: ${source}`,
-            `承認日: ${new Date().toISOString().split('T')[0]}`,
-            `========================================`,
-            '',
-            summaryText,
-            '',
-          ].join('\n');
-
-          await appendToDocument(googleDoc.doc_id as string, docContent);
-        }
-      } catch (docError) {
-        const docErrMsg = docError instanceof Error ? docError.message : '不明なエラー';
-        console.error('Google Docs 追記に失敗しました:', docErrMsg);
-      }
+    // --- Google ドキュメント自動書き出し ---
+    try {
+      await exportMeetingToDoc(meetingId);
+    } catch (docError) {
+      console.error('Google Docs 自動書き出し失敗:', docError instanceof Error ? docError.message : docError);
     }
 
     // --- フェーズ判定 + deal_statuses UPSERT ---
