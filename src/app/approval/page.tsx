@@ -122,7 +122,7 @@ export default function ApprovalPage() {
           : '指定期間に新しい議事録はありませんでした';
 
       if (result.errors.length > 0) {
-        message += `（${result.errors.length}件エラー）`;
+        message += `\nエラー: ${result.errors.join(' / ')}`;
       }
 
       setProcessMessage(message);
