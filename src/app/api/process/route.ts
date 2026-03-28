@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, isAuthError, requireRole, validateContentType } from '@/lib/auth';
 import { fetchNewTranscripts } from '@/lib/external/jamroll';
@@ -97,7 +98,28 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
     );
   }
 
+  // リクエストbodyの日付範囲バリデーション
+  const processSchema = z.object({
+    from: z.string().date().optional(),
+    to: z.string().date().optional(),
+  }).strict().optional();
+
   try {
+    // bodyが空の場合はundefined、ある場合はパース
+    const rawBody = await request.text();
+    const parsedJson: unknown = rawBody.length > 0 ? JSON.parse(rawBody) : undefined;
+    const bodyResult = processSchema.safeParse(parsedJson);
+
+    if (!bodyResult.success) {
+      return NextResponse.json(
+        { data: null, error: `リクエストパラメータが不正です: ${bodyResult.error.issues.map((i) => i.message).join(', ')}` },
+        { status: 400 }
+      ) as NextResponse<ApiResult<ProcessResult>>;
+    }
+
+    const from = bodyResult.data?.from;
+    const to = bodyResult.data?.to;
+
     const supabase = createServerSupabaseClient();
     const results: ProcessResult['results'] = [];
     const errors: string[] = [];
@@ -105,7 +127,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
     // 1. Jamroll からデータ取得
     let jamrollTranscripts: Awaited<ReturnType<typeof fetchNewTranscripts>> = [];
     try {
-      jamrollTranscripts = await fetchNewTranscripts();
+      jamrollTranscripts = await fetchNewTranscripts(from, to);
     } catch (err) {
       console.error('Jamroll データ取得失敗:', err instanceof Error ? err.message : err);
       errors.push('Jamroll データ取得失敗');
@@ -114,7 +136,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiResult
     // 2. PROUD Note からデータ取得
     let proudFiles: Awaited<ReturnType<typeof fetchProudNoteFiles>> = [];
     try {
-      proudFiles = await fetchProudNoteFiles();
+      const allProudFiles = await fetchProudNoteFiles();
+      // from/to が指定されている場合は日付でフィルタ
+      if (from || to) {
+        proudFiles = allProudFiles.filter((file) => {
+          if (from && file.date < from) return false;
+          if (to && file.date > to) return false;
+          return true;
+        });
+      } else {
+        proudFiles = allProudFiles;
+      }
     } catch (err) {
       console.error('PROUD Note データ取得失敗:', err instanceof Error ? err.message : err);
       errors.push('PROUD Note データ取得失敗');

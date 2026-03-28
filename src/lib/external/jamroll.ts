@@ -64,10 +64,18 @@ function getMockTranscripts(): JamrollTranscript[] {
 
 /**
  * Jamroll から新しい議事録を取得する
+ * @param from - 取得開始日 (YYYY-MM-DD) optional
+ * @param to - 取得終了日 (YYYY-MM-DD) optional
  */
-export async function fetchNewTranscripts(): Promise<JamrollTranscript[]> {
+export async function fetchNewTranscripts(from?: string, to?: string): Promise<JamrollTranscript[]> {
   if (isMockMode()) {
-    return getMockTranscripts();
+    const mocks = getMockTranscripts();
+    if (!from && !to) return mocks;
+    return mocks.filter((t) => {
+      if (from && t.date < from) return false;
+      if (to && t.date > to) return false;
+      return true;
+    });
   }
 
   const apiKey = process.env.JAMROLL_API_KEY;
@@ -79,7 +87,18 @@ export async function fetchNewTranscripts(): Promise<JamrollTranscript[]> {
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${JAMROLL_API_BASE}/transcripts?status=new`, {
+    // from/to指定時は日付範囲で取得（statusフィルタなし）、未指定時は従来通り新規のみ
+    let url: string;
+    if (from || to) {
+      const params = new URLSearchParams();
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      url = `${JAMROLL_API_BASE}/transcripts?${params.toString()}`;
+    } else {
+      url = `${JAMROLL_API_BASE}/transcripts?status=new`;
+    }
+
+    const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
