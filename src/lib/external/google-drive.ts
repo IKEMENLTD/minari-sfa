@@ -1,3 +1,4 @@
+import { createSign } from 'crypto';
 import { API_TIMEOUT_MS } from '@/lib/constants';
 import type { ProudNoteFile } from '@/types';
 
@@ -7,6 +8,7 @@ import type { ProudNoteFile } from '@/types';
 
 const GOOGLE_DOCS_API = 'https://docs.googleapis.com/v1/documents';
 const GOOGLE_DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
+const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents';
 
 interface ServiceAccountCredentials {
   client_email: string;
@@ -18,7 +20,6 @@ interface ServiceAccountCredentials {
  * Google サービスアカウント認証情報を取得する
  */
 function getCredentials(): ServiceAccountCredentials {
-  // Base64エンコード版を優先（Renderで"を含むJSONが設定できないため）
   const base64 = process.env.GOOGLE_SERVICE_ACCOUNT_BASE64;
   const json = base64
     ? Buffer.from(base64, 'base64').toString('utf-8')
@@ -41,23 +42,54 @@ function getCredentials(): ServiceAccountCredentials {
 }
 
 /**
- * サービスアカウントの OAuth トークンを取得する
- * (本番実装ではJWTを生成してトークンエンドポイントにリクエストする)
+ * Base64url エンコード（JWT用）
+ */
+function base64url(input: string | Buffer): string {
+  const buf = typeof input === 'string' ? Buffer.from(input, 'utf-8') : input;
+  return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+/**
+ * サービスアカウントのJWTを生成し、OAuthトークンを取得する
  */
 async function getAccessToken(signal: AbortSignal): Promise<string> {
   const creds = getCredentials();
-  // 簡易的なトークン取得 - 本番ではJWTライブラリを使用
+  const now = Math.floor(Date.now() / 1000);
+
+  // JWT Header
+  const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+
+  // JWT Claim Set
+  const claimSet = base64url(JSON.stringify({
+    iss: creds.client_email,
+    scope: SCOPES,
+    aud: creds.token_uri,
+    iat: now,
+    exp: now + 3600,
+  }));
+
+  // JWT Signature
+  const signInput = `${header}.${claimSet}`;
+  const sign = createSign('RSA-SHA256');
+  sign.update(signInput);
+  const signature = sign.sign(creds.private_key, 'base64')
+    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+  const jwt = `${signInput}.${signature}`;
+
   const response = await fetch(creds.token_uri, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: 'JWT_TOKEN_PLACEHOLDER', // 本番ではJWTを生成
+      assertion: jwt,
     }),
     signal,
   });
 
   if (!response.ok) {
+    const errorBody = await response.text();
+    console.error('Google OAuth エラー詳細:', errorBody);
     throw new Error(`Google OAuth エラー (${response.status})`);
   }
 
