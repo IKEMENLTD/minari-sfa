@@ -95,7 +95,7 @@ export async function POST(
   } catch (err) {
     console.error('要約再生成エラー:', err instanceof Error ? err.message : err);
     return NextResponse.json(
-      { data: null, error: err instanceof Error ? err.message : '要約の再生成に失敗しました' },
+      { data: null, error: '要約の再生成に失敗しました' },
       { status: 500 }
     );
   }

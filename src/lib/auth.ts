@@ -24,8 +24,8 @@ export interface AuthResult {
 export async function validateAuth(
   request: NextRequest
 ): Promise<NextResponse<ApiResult<null>> | AuthResult> {
-  // モックモードでは認証をスキップ（PoC段階で使用。本番移行時に USE_MOCK=false に切り替え）
-  if (process.env.USE_MOCK === 'true') {
+  // モックモードでは認証をスキップ（PoC段階のみ。本番では強制無効）
+  if (process.env.USE_MOCK === 'true' && process.env.NODE_ENV !== 'production') {
     return { userId: 'mock-user-id', role: 'admin' };
   }
 

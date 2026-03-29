@@ -65,6 +65,12 @@ export async function GET(
     }
 
     if (companyId) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(companyId)) {
+        return NextResponse.json(
+          { data: null, error: '無効な company_id フォーマットです' },
+          { status: 400 }
+        );
+      }
       query = query.eq('company_id', companyId);
     }
 
