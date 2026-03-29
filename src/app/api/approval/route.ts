@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
 import { judgeSalesPhase } from '@/lib/external/claude';
-import { exportMeetingToDoc } from '@/lib/export-to-doc';
 import type { ApprovalRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -187,13 +186,6 @@ export async function POST(
         { data: null, error: '商談ステータスの更新に失敗しました' },
         { status: 500 }
       );
-    }
-
-    // --- Google ドキュメント自動書き出し ---
-    try {
-      await exportMeetingToDoc(meetingId);
-    } catch (docError) {
-      console.error('Google Docs 自動書き出し失敗:', docError instanceof Error ? docError.message : docError);
     }
 
     // --- フェーズ判定 + deal_statuses UPSERT ---

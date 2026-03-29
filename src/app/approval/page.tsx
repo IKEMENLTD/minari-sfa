@@ -35,6 +35,8 @@ export default function ApprovalPage() {
     return d.toISOString().split('T')[0];
   });
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0]);
+  const [docConfirm, setDocConfirm] = useState<{ meetingId: string; companyName: string; hasExistingDoc: boolean } | null>(null);
+  const [docExporting, setDocExporting] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -160,16 +162,24 @@ export default function ApprovalPage() {
       const errorJson: { error: string } = await res.json();
       throw new Error(errorJson.error || '承認処理に失敗しました');
     }
-    const json: { data: { ai_estimated_company: string; corrected_company: string | null } } = await res.json();
+    const json: { data: { ai_estimated_company: string; corrected_company: string | null; meeting_id: string } } = await res.json();
     const companyName = json.data.corrected_company ?? json.data.ai_estimated_company;
+
+    // 承認後にcompaniesをリフレッシュ
+    setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
+    await fetchData();
+
     if (companyName && companyName !== '(社内)') {
-      setProcessMessage(`「${companyName}」を案件管理に登録しました`);
+      // 既存Docがあるかチェック
+      const existingCompany = companies.find((c) => c.name === companyName);
+      setDocConfirm({
+        meetingId,
+        companyName,
+        hasExistingDoc: !!existingCompany,
+      });
     } else {
       setProcessMessage('承認しました');
     }
-    // 承認後にcompaniesをリフレッシュ（新規企業が登録された可能性）
-    setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
-    await fetchData();
   };
 
   const handleReject = async (meetingId: string) => {
@@ -280,7 +290,62 @@ export default function ApprovalPage() {
         </div>
       )}
 
-      {processMessage && !error && (
+      {docConfirm && (
+        <div className="border border-accent/30 bg-surface px-4 py-4 space-y-3">
+          <p className="text-sm text-text">
+            {docConfirm.hasExistingDoc
+              ? `「${docConfirm.companyName}」のドキュメントが既にあります。追記しますか？`
+              : `「${docConfirm.companyName}」のドキュメントを新規作成しますか？`}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              loading={docExporting}
+              disabled={docExporting}
+              onClick={async () => {
+                setDocExporting(true);
+                try {
+                  const res = await fetch(`/api/meetings/${docConfirm.meetingId}/export-doc`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                  });
+                  if (!res.ok) {
+                    const errJson: { error: string } = await res.json();
+                    throw new Error(errJson.error);
+                  }
+                  const json: { data: { isNew: boolean } } = await res.json();
+                  setProcessMessage(
+                    json.data.isNew
+                      ? `「${docConfirm.companyName}」のドキュメントを作成しました`
+                      : `「${docConfirm.companyName}」のドキュメントに追記しました`
+                  );
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Google Docs書き出しに失敗しました');
+                } finally {
+                  setDocExporting(false);
+                  setDocConfirm(null);
+                }
+              }}
+            >
+              {docConfirm.hasExistingDoc ? '追記する' : '作成する'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={docExporting}
+              onClick={() => {
+                setDocConfirm(null);
+                setProcessMessage(`「${docConfirm.companyName}」を承認しました（ドキュメント書き出しスキップ）`);
+              }}
+            >
+              スキップ
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {processMessage && !error && !docConfirm && (
         <div className="flex items-start gap-2 border border-border bg-surface px-4 py-3 text-sm text-text-secondary whitespace-pre-line">
           <CheckCircle className="h-4 w-4 shrink-0 mt-0.5" />
           {processMessage}
