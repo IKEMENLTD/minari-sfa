@@ -58,7 +58,7 @@ export default function DealsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-text">案件ボード</h1>
         <div className="w-full sm:w-64">
           <Input

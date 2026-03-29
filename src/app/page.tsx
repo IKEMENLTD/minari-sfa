@@ -215,7 +215,7 @@ export default function DashboardPage() {
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: 4 }).map((__, j) => (
-                      <td key={j} className="px-4 py-3">
+                      <td key={j} className="px-2 sm:px-4 py-2 sm:py-3">
                         <Skeleton className="h-4 w-full" />
                       </td>
                     ))}
@@ -282,7 +282,7 @@ export default function DashboardPage() {
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: 4 }).map((__, j) => (
-                      <td key={j} className="px-4 py-3">
+                      <td key={j} className="px-2 sm:px-4 py-2 sm:py-3">
                         <Skeleton className="h-4 w-full" />
                       </td>
                     ))}
