@@ -49,10 +49,18 @@ function base64url(input: string | Buffer): string {
   return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
+// トークンキャッシュ（有効期限50分）
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
 /**
- * サービスアカウントのJWTを生成し、OAuthトークンを取得する
+ * サービスアカウントのJWTを生成し、OAuthトークンを取得する（キャッシュ付き）
  */
 async function getAccessToken(signal: AbortSignal): Promise<string> {
+  // キャッシュが有効ならそのまま返す
+  if (cachedToken && Date.now() < cachedToken.expiresAt) {
+    return cachedToken.token;
+  }
+
   const creds = getCredentials();
   const now = Math.floor(Date.now() / 1000);
 
@@ -94,6 +102,7 @@ async function getAccessToken(signal: AbortSignal): Promise<string> {
   }
 
   const data = (await response.json()) as { access_token: string };
+  cachedToken = { token: data.access_token, expiresAt: Date.now() + 50 * 60 * 1000 };
   return data.access_token;
 }
 
@@ -339,9 +348,31 @@ export async function createDocument(
     }
 
     const data = (await response.json()) as { id: string; webViewLink: string };
+
+    // フォルダの共有設定を継承するため、リンクを知っている人がアクセス可能にする
+    try {
+      await fetch(
+        `${GOOGLE_DRIVE_API}/${data.id}/permissions`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            role: 'writer',
+            type: 'anyone',
+          }),
+          signal: controller.signal,
+        }
+      );
+    } catch (permErr) {
+      console.error('ドキュメント共有権限の設定に失敗:', permErr instanceof Error ? permErr.message : permErr);
+    }
+
     return {
       docId: data.id,
-      docUrl: data.webViewLink,
+      docUrl: `https://docs.google.com/document/d/${data.id}/edit`,
     };
   } finally {
     clearTimeout(timeoutId);
