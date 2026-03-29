@@ -25,7 +25,8 @@ const salesPhaseJudgmentSchema = z.object({
 // ---------------------------------------------------------------------------
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+const CLAUDE_SONNET = 'claude-sonnet-4-20250514';
+const CLAUDE_HAIKU = 'claude-haiku-4-5-20251001';
 
 interface ClaudeMessage {
   role: 'user' | 'assistant';
@@ -42,7 +43,8 @@ interface ClaudeResponse {
 async function callClaude(
   messages: ClaudeMessage[],
   systemPrompt: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  options?: { model?: string; maxTokens?: number }
 ): Promise<string> {
   const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey) {
@@ -57,8 +59,8 @@ async function callClaude(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 16384,
+      model: options?.model ?? CLAUDE_SONNET,
+      max_tokens: options?.maxTokens ?? 16384,
       system: systemPrompt,
       messages,
     }),
@@ -216,7 +218,8 @@ ${phaseList}
     const result = await callClaude(
       [{ role: 'user', content: `以下の商談履歴からフェーズを判定してください:\n\n${meetingsSummary}` }],
       systemPrompt,
-      controller.signal
+      controller.signal,
+      { model: CLAUDE_HAIKU, maxTokens: 1024 }
     );
 
     const rawParsed: unknown = JSON.parse(result);
