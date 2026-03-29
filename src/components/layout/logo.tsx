@@ -22,37 +22,39 @@ function LogoIcon({ size = 28, className }: LogoIconProps) {
     >
       {/* Back card */}
       <rect
-        x="6"
-        y="4"
-        width="18"
-        height="24"
+        x="3"
+        y="5"
+        width="20"
+        height="22"
         rx="2"
         fill="#1d4ed8"
-        opacity="0.35"
+        opacity="0.3"
+        transform="rotate(-6 3 5)"
       />
       {/* Middle card */}
       <rect
-        x="9"
-        y="3"
-        width="18"
-        height="24"
+        x="5"
+        y="4"
+        width="20"
+        height="22"
         rx="2"
         fill="#2563eb"
-        opacity="0.6"
+        opacity="0.55"
+        transform="rotate(-2 5 4)"
       />
       {/* Front card */}
       <rect
-        x="8"
-        y="6"
-        width="18"
-        height="24"
+        x="7"
+        y="5"
+        width="20"
+        height="22"
         rx="2"
         fill="#2563eb"
       />
-      {/* Bar chart lines on front card */}
-      <rect x="12" y="18" width="3" height="8" rx="0.5" fill="white" opacity="0.9" />
-      <rect x="17" y="14" width="3" height="12" rx="0.5" fill="white" opacity="0.9" />
-      <rect x="22" y="10" width="3" height="16" rx="0.5" fill="white" opacity="0.9" />
+      {/* Bar chart on front card */}
+      <rect x="11" y="16" width="3" height="7" rx="0.5" fill="white" opacity="0.9" />
+      <rect x="15.5" y="13" width="3" height="10" rx="0.5" fill="white" opacity="0.9" />
+      <rect x="20" y="10" width="3" height="13" rx="0.5" fill="white" opacity="0.9" />
     </svg>
   );
 }
