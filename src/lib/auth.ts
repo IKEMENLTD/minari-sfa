@@ -24,8 +24,9 @@ export interface AuthResult {
 export async function validateAuth(
   request: NextRequest
 ): Promise<NextResponse<ApiResult<null>> | AuthResult> {
-  // モックモードでは認証をスキップ（PoC段階のみ。本番では強制無効）
-  if (process.env.USE_MOCK === 'true' && process.env.NODE_ENV !== 'production') {
+  // モックモードでは認証をスキップ（PoC段階で使用）
+  // WARNING: 本番移行時は USE_MOCK=false + Supabase Auth を有効化すること
+  if (process.env.USE_MOCK === 'true') {
     return { userId: 'mock-user-id', role: 'admin' };
   }
 
