@@ -581,12 +581,38 @@ Renderの環境変数でパスワードを設定する際：
 
 ## 29. 残課題
 
+### 手動作業（オーナー対応）
+
+| 項目 | 状態 | 詳細 |
+|------|------|------|
+| Google Driveフォルダ復旧 | 要対応 | ゴミ箱確認 or 新規作成→サービスアカウント招待→Render環境変数更新 |
+| `GOOGLE_DRIVE_SHARE_EMAIL` | 未設定 | Renderに自分のGmailアドレスを追加 |
+| `SITE_PASSWORD`クォート除去 | 要対応 | Render環境変数からシングルクォートを削除 |
+| モックデータDB削除 | 要実行 | Supabase SQL Editor: `DELETE FROM meetings WHERE source_id LIKE '%mock%'` |
+| Manual Deploy | 要実行 | Render Dashboard |
+
+### 本番移行時
+
 | 項目 | 状態 | 詳細 |
 |------|------|------|
 | Jamroll APIキー | 未取得 | 本物のAPIキーが必要 |
-| USE_MOCK=false | 未移行 | Supabase Auth導入時に切り替え |
+| `USE_MOCK=false` | 未移行 | Supabase Auth導入時に切り替え |
 | RLS有効化 | 未実行 | 002_enable_rls.sql をSupabaseで実行 |
-| Google Driveフォルダ復旧 | 要対応 | 処理完了フォルダの再作成 |
-| GOOGLE_DRIVE_SHARE_EMAIL | 未設定 | Renderに追加 |
-| SITE_PASSWORDクォート除去 | 要対応 | Render環境変数 |
-| モックデータDB削除 | 要実行 | Supabase SQL Editor |
+| Redis レート制限 | 未実装 | インメモリ→永続化（スケール時） |
+| CSP `unsafe-inline` 除去 | 未対応 | Next.js nonce対応（中期） |
+| テスト追加 | 未実装 | ユニットテスト・E2Eテストなし |
+
+### 完了済み（今回修正）
+
+| 項目 | 修正内容 |
+|------|---------|
+| ✅ error.tsx | ルートレベルのグローバルエラーバウンダリ追加 |
+| ✅ not-found.tsx | カスタム404ページ追加 |
+| ✅ 未使用コード削除 | formatDateTime, truncateText, generateId, isMockMode |
+| ✅ .env.local.example | SITE_PASSWORD, GOOGLE_DRIVE_SHARE_EMAIL, PORT追加 |
+| ✅ 空ディレクトリ削除 | src/app/sfa/ |
+| ✅ セキュリティ強化 | USE_MOCK本番無効化, ブルートフォース対策, タイミングセーフ比較, SameSite strict |
+| ✅ モバイルレスポンシブ | 375px全面対応, テーブル→カード切替 |
+| ✅ Google Docs全面置換 | 重複追記防止 |
+| ✅ AI要約強化 | NotebookLM対応の詳細レポート |
+| ✅ フェーズ判定Haiku化 | コスト削減 |
