@@ -349,30 +349,34 @@ export async function createDocument(
 
     const data = (await response.json()) as { id: string; webViewLink: string };
 
-    // フォルダの共有設定を継承するため、リンクを知っている人がアクセス可能にする
-    try {
-      await fetch(
-        `${GOOGLE_DRIVE_API}/${data.id}/permissions`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            role: 'writer',
-            type: 'anyone',
-          }),
-          signal: controller.signal,
-        }
-      );
-    } catch (permErr) {
-      console.error('ドキュメント共有権限の設定に失敗:', permErr instanceof Error ? permErr.message : permErr);
+    // フォルダの所有者にドキュメントへのアクセス権を付与
+    const shareEmail = process.env.GOOGLE_DRIVE_SHARE_EMAIL;
+    if (shareEmail) {
+      try {
+        await fetch(
+          `${GOOGLE_DRIVE_API}/${data.id}/permissions`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              role: 'writer',
+              type: 'user',
+              emailAddress: shareEmail,
+            }),
+            signal: controller.signal,
+          }
+        );
+      } catch (permErr) {
+        console.error('ドキュメント共有権限の設定に失敗:', permErr instanceof Error ? permErr.message : permErr);
+      }
     }
 
     return {
       docId: data.id,
-      docUrl: `https://docs.google.com/document/d/${data.id}/edit`,
+      docUrl: data.webViewLink || `https://docs.google.com/document/d/${data.id}/edit`,
     };
   } finally {
     clearTimeout(timeoutId);
