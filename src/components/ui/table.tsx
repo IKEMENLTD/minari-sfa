@@ -57,7 +57,7 @@ interface TableCellProps extends TdHTMLAttributes<HTMLTableCellElement> {
 function TableCell({ children, className, ...props }: TableCellProps) {
   return (
     <td
-      className={clsx('px-4 py-3 text-text whitespace-nowrap', className)}
+      className={clsx('px-2 sm:px-4 py-2 sm:py-3 text-text whitespace-nowrap', className)}
       {...props}
     >
       {children}
@@ -90,7 +90,7 @@ function SortableHeader({
   return (
     <th
       className={clsx(
-        'px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider',
+        'px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider',
         onSort && 'cursor-pointer select-none hover:text-text',
         className,
       )}
@@ -110,7 +110,7 @@ function TableHeader({ children, className, ...props }: ThHTMLAttributes<HTMLTab
   return (
     <th
       className={clsx(
-        'px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider',
+        'px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider',
         className,
       )}
       {...props}

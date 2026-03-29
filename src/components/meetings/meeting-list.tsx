@@ -65,7 +65,7 @@ function MeetingList({ meetings }: MeetingListProps) {
               {meeting.ai_estimated_company || '-'}
             </TableCell>
             <TableCell>
-              <span className="truncate max-w-[200px] inline-block">
+              <span className="truncate max-w-[120px] sm:max-w-[200px] inline-block">
                 {meeting.participants.join(', ')}
               </span>
             </TableCell>

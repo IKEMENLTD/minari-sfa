@@ -10,7 +10,7 @@ async function handleLogout() {
 
 function Header() {
   return (
-    <header className="flex items-center justify-between border-b border-border bg-surface px-6 py-3">
+    <header className="flex items-center justify-between border-b border-border bg-surface px-4 sm:px-6 py-3">
       <div className="pl-10 md:hidden">
         <Logo size={24} />
       </div>

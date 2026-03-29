@@ -22,7 +22,7 @@ function Card({ children, className, ...props }: CardProps) {
 function CardHeader({ children, className, ...props }: CardProps) {
   return (
     <div
-      className={clsx('border-b border-border px-5 py-4', className)}
+      className={clsx('border-b border-border px-3 sm:px-5 py-3 sm:py-4', className)}
       {...props}
     >
       {children}
@@ -32,7 +32,7 @@ function CardHeader({ children, className, ...props }: CardProps) {
 
 function CardContent({ children, className, ...props }: CardProps) {
   return (
-    <div className={clsx('px-5 py-4', className)} {...props}>
+    <div className={clsx('px-3 sm:px-5 py-3 sm:py-4', className)} {...props}>
       {children}
     </div>
   );
@@ -42,7 +42,7 @@ function CardFooter({ children, className, ...props }: CardProps) {
   return (
     <div
       className={clsx(
-        'border-t border-border px-5 py-3 flex items-center justify-end gap-2',
+        'border-t border-border px-3 sm:px-5 py-2 sm:py-3 flex items-center justify-end gap-2',
         className,
       )}
       {...props}

@@ -54,7 +54,7 @@ function DealList({ deals }: DealListProps) {
               />
             </TableCell>
             <TableCell>
-              <span className="truncate max-w-[200px] inline-block">
+              <span className="truncate max-w-[120px] sm:max-w-[200px] inline-block">
                 {deal.deal_status.next_action || '-'}
               </span>
             </TableCell>

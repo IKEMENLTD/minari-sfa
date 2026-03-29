@@ -139,7 +139,8 @@ function MeetingDetailView({ meeting, onResummarize }: MeetingDetailProps) {
                   disabled={exporting || resummarizing}
                 >
                   <FileText className="h-3.5 w-3.5" />
-                  Google Docsに書き出す
+                  <span className="hidden sm:inline">Google Docsに書き出す</span>
+                  <span className="sm:hidden">Docs書き出し</span>
                 </Button>
                 <Button
                   variant="secondary"

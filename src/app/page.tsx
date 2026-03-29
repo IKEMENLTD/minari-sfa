@@ -303,7 +303,7 @@ export default function DashboardPage() {
                       <Badge variant="info">{d.phase?.phase_name ?? '未設定'}</Badge>
                     </TableCell>
                     <TableCell>
-                      <span className="truncate max-w-[200px] inline-block">
+                      <span className="truncate max-w-[120px] sm:max-w-[200px] inline-block">
                         {d.deal_status.next_action || '-'}
                       </span>
                     </TableCell>

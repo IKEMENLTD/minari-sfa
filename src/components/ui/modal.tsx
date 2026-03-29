@@ -46,7 +46,7 @@ function Modal({ open, onClose, title, children, footer, className }: ModalProps
         aria-modal="true"
         aria-labelledby={title ? 'modal-title' : undefined}
         className={clsx(
-          'relative z-50 w-full max-w-lg rounded-md border border-border bg-surface shadow-sm',
+          'relative z-50 w-full max-w-[calc(100%-2rem)] sm:max-w-lg rounded-md border border-border bg-surface shadow-sm',
           className,
         )}
       >
