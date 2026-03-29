@@ -133,7 +133,7 @@ export default function DashboardPage() {
   }, [fetchData]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-hidden">
       <h1 className="text-xl font-semibold text-text">ホーム</h1>
 
       {error && (
@@ -200,59 +200,63 @@ export default function DashboardPage() {
             </Link>
           )}
         </div>
-        <Card>
-          <Table>
-            <TableHead>
-              <tr>
-                <TableHeader>日付</TableHeader>
-                <TableHeader>推定企業</TableHeader>
-                <TableHeader>ソース</TableHeader>
-                <TableHeader>ステータス</TableHeader>
-              </tr>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <tr key={i}>
-                    {Array.from({ length: 4 }).map((__, j) => (
-                      <td key={j} className="px-2 sm:px-4 py-2 sm:py-3">
-                        <Skeleton className="h-4 w-full" />
-                      </td>
+        {loading ? (
+          <Card>
+            <div className="p-4 space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          </Card>
+        ) : data && data.recentPending.length > 0 ? (
+          <>
+            {/* モバイル: カード */}
+            <div className="sm:hidden space-y-2">
+              {data.recentPending.map((m) => (
+                <Link key={m.id} href={`/meetings/${m.id}`} className="block border border-border bg-surface p-3 hover:bg-muted/50">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-accent">{new Date(m.meeting_date).toLocaleDateString('ja-JP')}</span>
+                    <Badge variant={statusVariant[m.approval_status] || 'default'}>承認待ち</Badge>
+                  </div>
+                  <p className="text-sm text-text">{m.ai_estimated_company || '-'}</p>
+                </Link>
+              ))}
+            </div>
+            {/* デスクトップ: テーブル */}
+            <div className="hidden sm:block">
+              <Card>
+                <Table>
+                  <TableHead>
+                    <tr>
+                      <TableHeader>日付</TableHeader>
+                      <TableHeader>推定企業</TableHeader>
+                      <TableHeader>ソース</TableHeader>
+                      <TableHeader>ステータス</TableHeader>
+                    </tr>
+                  </TableHead>
+                  <TableBody>
+                    {data.recentPending.map((m) => (
+                      <TableRow key={m.id}>
+                        <TableCell>
+                          <Link href={`/meetings/${m.id}`} className="text-accent hover:underline">
+                            {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
+                          </Link>
+                        </TableCell>
+                        <TableCell>{m.ai_estimated_company || '-'}</TableCell>
+                        <TableCell><Badge variant="info">{m.source}</Badge></TableCell>
+                        <TableCell><Badge variant={statusVariant[m.approval_status] || 'default'}>承認待ち</Badge></TableCell>
+                      </TableRow>
                     ))}
-                  </tr>
-                ))
-              ) : data && data.recentPending.length > 0 ? (
-                data.recentPending.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableCell>
-                      <Link
-                        href={`/meetings/${m.id}`}
-                        className="text-accent hover:underline"
-                      >
-                        {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{m.ai_estimated_company || '-'}</TableCell>
-                    <TableCell>
-                      <Badge variant="info">{m.source}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariant[m.approval_status] || 'default'}>
-                        承認待ち
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-secondary">
-                    承認待ちの商談はありません
-                  </td>
-                </tr>
-              )}
-            </TableBody>
-          </Table>
-        </Card>
+                  </TableBody>
+                </Table>
+              </Card>
+            </div>
+          </>
+        ) : (
+          <div className="py-8 text-center text-sm text-text-secondary">
+            承認待ちの商談はありません
+          </div>
+        )}
       </div>
 
       {/* 注目案件 */}
@@ -267,59 +271,65 @@ export default function DashboardPage() {
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-        <Card>
-          <Table>
-            <TableHead>
-              <tr>
-                <TableHeader>企業名</TableHeader>
-                <TableHeader>フェーズ</TableHeader>
-                <TableHeader>ネクストアクション</TableHeader>
-                <TableHeader>担当者</TableHeader>
-              </tr>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <tr key={i}>
-                    {Array.from({ length: 4 }).map((__, j) => (
-                      <td key={j} className="px-2 sm:px-4 py-2 sm:py-3">
-                        <Skeleton className="h-4 w-full" />
-                      </td>
+        {loading ? (
+          <Card>
+            <div className="p-4 space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          </Card>
+        ) : data && data.recentDeals.length > 0 ? (
+          <>
+            {/* モバイル: カード */}
+            <div className="sm:hidden space-y-2">
+              {data.recentDeals.map((d) => (
+                <Link key={d.deal_status.id} href={`/deals/${d.deal_status.id}`} className="block border border-border bg-surface p-3 hover:bg-muted/50">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-accent">{d.company?.name ?? '未登録'}</span>
+                    <Badge variant="info">{d.phase?.phase_name ?? '未設定'}</Badge>
+                  </div>
+                  <p className="text-xs text-text truncate">{d.deal_status.next_action || '-'}</p>
+                </Link>
+              ))}
+            </div>
+            {/* デスクトップ: テーブル */}
+            <div className="hidden sm:block">
+              <Card>
+                <Table>
+                  <TableHead>
+                    <tr>
+                      <TableHeader>企業名</TableHeader>
+                      <TableHeader>フェーズ</TableHeader>
+                      <TableHeader>ネクストアクション</TableHeader>
+                      <TableHeader>担当者</TableHeader>
+                    </tr>
+                  </TableHead>
+                  <TableBody>
+                    {data.recentDeals.map((d) => (
+                      <TableRow key={d.deal_status.id}>
+                        <TableCell>
+                          <Link href={`/deals/${d.deal_status.id}`} className="text-accent hover:underline font-medium">
+                            {d.company?.name ?? '未登録'}
+                          </Link>
+                        </TableCell>
+                        <TableCell><Badge variant="info">{d.phase?.phase_name ?? '未設定'}</Badge></TableCell>
+                        <TableCell>
+                          <span className="truncate max-w-[200px] inline-block">{d.deal_status.next_action || '-'}</span>
+                        </TableCell>
+                        <TableCell>{d.company?.assigned_to || '-'}</TableCell>
+                      </TableRow>
                     ))}
-                  </tr>
-                ))
-              ) : data && data.recentDeals.length > 0 ? (
-                data.recentDeals.map((d) => (
-                  <TableRow key={d.deal_status.id}>
-                    <TableCell>
-                      <Link
-                        href={`/deals/${d.deal_status.id}`}
-                        className="text-accent hover:underline font-medium"
-                      >
-                        {d.company?.name ?? '未登録'}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="info">{d.phase?.phase_name ?? '未設定'}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="truncate max-w-[120px] sm:max-w-[200px] inline-block">
-                        {d.deal_status.next_action || '-'}
-                      </span>
-                    </TableCell>
-                    <TableCell>{d.company?.assigned_to || '-'}</TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-secondary">
-                    案件がありません
-                  </td>
-                </tr>
-              )}
-            </TableBody>
-          </Table>
-        </Card>
+                  </TableBody>
+                </Table>
+              </Card>
+            </div>
+          </>
+        ) : (
+          <div className="py-8 text-center text-sm text-text-secondary">
+            案件がありません
+          </div>
+        )}
       </div>
     </div>
   );

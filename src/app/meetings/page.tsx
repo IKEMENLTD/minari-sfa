@@ -5,8 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { MeetingList } from '@/components/meetings/meeting-list';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { SkeletonTableRow } from '@/components/ui/skeleton';
-import { Table, TableHead, TableBody, TableHeader } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle } from 'lucide-react';
 import type { MeetingRow } from '@/types';
 
@@ -127,22 +126,11 @@ function MeetingsContent() {
       )}
 
       {loading ? (
-        <Table>
-          <TableHead>
-            <tr>
-              <TableHeader>日付</TableHeader>
-              <TableHeader>企業名（推定）</TableHeader>
-              <TableHeader>参加者</TableHeader>
-              <TableHeader>ソース</TableHeader>
-              <TableHeader>ステータス</TableHeader>
-            </tr>
-          </TableHead>
-          <TableBody>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <SkeletonTableRow key={i} columns={5} />
-            ))}
-          </TableBody>
-        </Table>
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
       ) : (
         <MeetingList meetings={meetings} />
       )}
@@ -155,22 +143,11 @@ export default function MeetingsPage() {
     <Suspense fallback={
       <div className="space-y-6">
         <h1 className="text-xl font-semibold text-text">商談記録</h1>
-        <Table>
-          <TableHead>
-            <tr>
-              <TableHeader>日付</TableHeader>
-              <TableHeader>企業名（推定）</TableHeader>
-              <TableHeader>参加者</TableHeader>
-              <TableHeader>ソース</TableHeader>
-              <TableHeader>ステータス</TableHeader>
-            </tr>
-          </TableHead>
-          <TableBody>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <SkeletonTableRow key={i} columns={5} />
-            ))}
-          </TableBody>
-        </Table>
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
       </div>
     }>
       <MeetingsContent />

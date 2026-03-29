@@ -5,8 +5,7 @@ import { AlertCircle } from 'lucide-react';
 import { DealList } from '@/components/deals/deal-list';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { SkeletonTableRow } from '@/components/ui/skeleton';
-import { Table, TableHead, TableBody, TableHeader } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { DealWithDetails } from '@/types';
 
 export default function DealsPage() {
@@ -84,22 +83,11 @@ export default function DealsPage() {
       )}
 
       {loading ? (
-        <Table>
-          <TableHead>
-            <tr>
-              <TableHeader>企業名</TableHeader>
-              <TableHeader>フェーズ</TableHeader>
-              <TableHeader>ネクストアクション</TableHeader>
-              <TableHeader>最終商談日</TableHeader>
-              <TableHeader>担当者</TableHeader>
-            </tr>
-          </TableHead>
-          <TableBody>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <SkeletonTableRow key={i} columns={5} />
-            ))}
-          </TableBody>
-        </Table>
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
       ) : (
         <DealList deals={filtered} />
       )}
