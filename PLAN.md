@@ -290,7 +290,296 @@ POST /api/meetings/[id]/export-doc
 
 ---
 
-## 16. 残課題
+## 16. Renderデプロイ設定
+
+| 項目 | 値 |
+|------|-----|
+| Build Command | `npm install; npm run build` |
+| Start Command | `npm run start` (`next start`) |
+| Node.js | >=18.18.0（package.jsonで指定） |
+| Auto-Deploy | **OFF**（手動デプロイ推奨） |
+| Instance | Free (0.1 CPU / 512MB) |
+| Port | 10000 |
+
+**デプロイ手順**: コード変更 → `git push` → Render Dashboard → Manual Deploy → Deploy latest commit
+
+**注意**: pushのたびに再ビルド（2-3分）でサイトがダウンするため、Auto-Deployは必ずOFFにすること。
+
+---
+
+## 17. ファイル構成
+
+```
+morii-system/
+├── PLAN.md                              # 本設計書
+├── package.json / tsconfig.json
+├── next.config.ts                       # セキュリティヘッダー設定
+├── postcss.config.mjs
+├── .env.local / .env.local.example
+│
+├── supabase/migrations/
+│   ├── 001_initial_schema.sql           # 10テーブル定義
+│   ├── 002_enable_rls.sql               # RLSポリシー（PoC無効）
+│   └── 003_seed_and_constraints.sql     # フェーズシード + UNIQUE制約
+│
+└── src/
+    ├── middleware.ts                     # 認証・セキュリティ
+    ├── types/index.ts                   # 全型定義
+    │
+    ├── lib/
+    │   ├── auth.ts                      # 認証ヘルパー（JWT/Mock切替）
+    │   ├── constants.ts                 # フェーズ33種 + API_TIMEOUT_MS
+    │   ├── utils.ts                     # formatDate, generateId, isMockMode
+    │   ├── export-to-doc.ts             # Google Docs書き出し共通関数
+    │   ├── supabase/client.ts           # ブラウザ用Supabase
+    │   ├── supabase/server.ts           # サーバー用Supabase（service_role）
+    │   └── external/
+    │       ├── claude.ts                # Claude API（Sonnet要約 + Haiku分類）
+    │       ├── jamroll.ts               # Jamroll API
+    │       └── google-drive.ts          # Google Drive/Docs API（JWT認証+キャッシュ）
+    │
+    ├── components/
+    │   ├── ui/                          # button, badge, card, input, select,
+    │   │                                # table, modal, skeleton（8ファイル）
+    │   ├── layout/
+    │   │   ├── sidebar.tsx              # ナビ: ホーム/商談記録/取り込み・承認/案件ボード
+    │   │   ├── header.tsx               # ユーザー名 + ログアウト
+    │   │   └── logo.tsx                 # SALES DECKロゴ
+    │   ├── meetings/
+    │   │   ├── meeting-list.tsx         # 商談テーブル
+    │   │   ├── meeting-detail.tsx       # 詳細表示 + 再生成/書き出しボタン
+    │   │   └── approval-card.tsx        # 承認カード（類似企業チェック付き）
+    │   └── deals/
+    │       ├── deal-list.tsx            # 案件テーブル
+    │       ├── deal-card.tsx            # 案件カード（インライン編集）
+    │       └── phase-badge.tsx          # フェーズバッジ
+    │
+    └── app/
+        ├── layout.tsx / globals.css
+        ├── page.tsx                     # ホーム（ダッシュボード）
+        ├── login/page.tsx               # ログイン
+        ├── meetings/page.tsx            # 商談記録（Suspense対応）
+        ├── meetings/[id]/page.tsx       # 商談詳細（CSR）
+        ├── approval/page.tsx            # 取り込み・承認
+        ├── deals/page.tsx               # 案件ボード
+        ├── deals/[id]/page.tsx          # 案件詳細（SSR+CSR）
+        └── api/ (14エンドポイント)
+```
+
+---
+
+## 18. UIデザインシステム
+
+### カラートークン（globals.css @theme）
+
+| トークン | 値 | 用途 |
+|---------|-----|------|
+| `--color-bg` | #fafafa | 背景 |
+| `--color-surface` | #ffffff | カード・パネル |
+| `--color-border` | #e5e7eb | ボーダー |
+| `--color-text` | #111827 | 本文 |
+| `--color-text-secondary` | #6b7280 | 副テキスト |
+| `--color-accent` | #2563eb | アクション・リンク |
+| `--color-accent-hover` | #1d4ed8 | ホバー |
+| `--color-muted` | #f3f4f6 | 非活性背景 |
+
+### ボタンバリアント
+
+| バリアント | 用途 | スタイル |
+|-----------|------|---------|
+| primary | 主要アクション | 青背景 + 白文字 |
+| secondary | 副次アクション | ボーダー + 背景なし |
+| ghost | 控えめ操作 | 透明 + hover時背景 |
+| danger | 破壊的操作 | 赤背景 |
+
+### サイズ
+
+| サイズ | min-height | 用途 |
+|-------|-----------|------|
+| sm | 36px | テーブル内、補助ボタン |
+| md | 44px（WCAG推奨） | 標準 |
+| lg | 48px | 大きなCTA |
+
+### サイドバーナビゲーション
+
+| アイコン | ラベル | パス |
+|---------|-------|------|
+| LayoutDashboard | ホーム | / |
+| FileText | 商談記録 | /meetings |
+| CheckCircle | 取り込み・承認 | /approval |
+| Briefcase | 案件ボード | /deals |
+
+---
+
+## 19. モバイルレスポンシブ仕様
+
+| ブレークポイント | 対応 |
+|----------------|------|
+| 480px（スマホ） | 1列グリッド、ボタン縦積み、セレクト全幅、テーブル横スクロール |
+| 768px（タブレット） | サイドバー非表示→ハンバーガーメニュー、2列グリッド |
+| 1024px+（デスクトップ） | サイドバー常時表示、4列グリッド |
+
+### 主な対応
+
+- サイドバー: `hidden md:flex` + ハンバーガーメニュー（スクロールロック付き）
+- 承認ページボタン群: `flex-col sm:flex-row`
+- 日付フォーム: `grid grid-cols-2 sm:flex`
+- 議事録フィルタ: `w-full sm:w-48`
+- 案件検索: `w-full sm:w-64`
+- 承認カードラジオ: `flex-col sm:flex-row`
+
+---
+
+## 20. processLoop仕様（議事録取り込み）
+
+```
+フロントエンド（approval/page.tsx）
+  │
+  for (i = 0; i < 30; i++) {
+  │  表示: 「取り込み中... (N件完了、M回目)」
+  │  ↓
+  │  POST /api/process { limit: 1, from?, to? }
+  │  ├─ 30秒タイムアウト（AbortController）
+  │  ├─ Jamroll: プレースホルダーキー検出→即エラー（ハング防止）
+  │  ├─ PROUD: Google Drive全ファイル取得→日付フィルタ
+  │  ├─ 処理済みチェック（source_id）→スキップ
+  │  ├─ Claude Sonnet: 詳細レポート生成（10-15秒/件）
+  │  └─ レスポンス: { processedCount, remaining, results, errors }
+  │
+  │  if (processedCount === 0 && remaining === 0) break;
+  │  if (remaining === 0) break;
+  }
+  │
+  表示: 「N件の議事録を取り込みました」+ エラー詳細
+```
+
+---
+
+## 21. 再生成時の自動Google Docs書き出し
+
+```
+POST /api/meetings/[id]/resummarize
+  │
+  ├─ transcripts から full_text 取得
+  ├─ Claude Sonnet で要約再生成
+  ├─ summaries UPDATE（DBは上書き）
+  ├─ meetings UPDATE（participants, ai_estimated_company）
+  │
+  ├─ exportMeetingToDoc(id)  ← 自動実行
+  │  ├─ 企業の全承認済み議事録を取得
+  │  ├─ replaceDocumentContent() で全面置換
+  │  └─ Google Docsは常に最新状態（重複なし）
+  │
+  └─ レスポンス: { summary_text }
+```
+
+---
+
+## 22. GCPサービスアカウント構築手順
+
+1. **@gmail.comアカウント**でGoogle Cloud Consoleにログイン（組織ポリシー回避）
+2. プロジェクト作成（組織: なし）
+3. APIを有効化: **Google Drive API** + **Google Docs API**
+4. IAM → サービスアカウント → 新規作成（名前: sales-deck）
+5. 鍵タブ → 新しい鍵 → JSON形式でダウンロード
+6. `client_email`を取得（例: `sales-deck@project.iam.gserviceaccount.com`）
+7. 3つのDriveフォルダでそのメールを共有（処理完了=編集者、PLOUD=閲覧者、JAMROLL=編集者）
+8. JSONをBase64エンコード: `cat key.json | tr -d '\n' | base64 -w 0`
+9. Renderに `GOOGLE_SERVICE_ACCOUNT_BASE64` として設定
+
+---
+
+## 23. Supabaseで手動実行が必要なSQL
+
+### フェーズシードデータ（33件）
+003_seed_and_constraints.sqlのINSERT文をSQL Editorで実行
+
+### UNIQUE制約
+```sql
+ALTER TABLE approvals ADD CONSTRAINT uq_approvals_meeting_id UNIQUE (meeting_id);
+ALTER TABLE meetings ADD CONSTRAINT uq_meetings_source_source_id UNIQUE (source, source_id);
+ALTER TABLE deal_statuses ADD CONSTRAINT uq_deal_statuses_company_id UNIQUE (company_id);
+ALTER TABLE google_docs ADD CONSTRAINT uq_google_docs_company_id UNIQUE (company_id);
+```
+
+### モックデータ削除
+```sql
+DELETE FROM meetings WHERE source_id LIKE 'jamroll-mock%' OR source_id LIKE 'proud-mock%';
+```
+
+---
+
+## 24. UptimeRobot設定
+
+| 項目 | 値 |
+|------|-----|
+| Monitor Type | HTTP(s)（Pingではダメ） |
+| URL | `https://auto-logger-rhc5.onrender.com/api/health` |
+| Interval | 9分（Render無料プランの15分スリープ以内） |
+| Alert | メール通知 |
+
+---
+
+## 25. コスト構造
+
+### Claude API
+
+| モデル | 入力 | 出力 | 用途 |
+|-------|------|------|------|
+| Sonnet 4 | $3/MTok | $15/MTok | 議事録要約（1件あたり約$0.05-0.15） |
+| Haiku 4.5 | $0.80/MTok | $4/MTok | フェーズ判定（1件あたり約$0.005） |
+
+### Render無料プラン
+
+| 制限 | 値 |
+|------|-----|
+| CPU | 0.1 |
+| メモリ | 512MB |
+| 帯域 | 100GB/月 |
+| スリープ | 15分無通信で停止 |
+| ビルド | 500分/月 |
+
+---
+
+## 26. Claudeレスポンスのマークダウン除去
+
+Claude APIが ````json ... ```` でJSONを囲んで返すケースがある。`callClaude()`内で自動除去：
+
+```typescript
+let text = textContent.text.trim();
+if (text.startsWith('```')) {
+  text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+}
+```
+
+---
+
+## 27. SITE_PASSWORDの注意点
+
+Renderの環境変数でパスワードを設定する際：
+- **シングルクォート `'` で囲まない**（Renderが値の一部として扱う）
+- **ダブルクォート `"` を値に含めない**（フォームが壊れる）
+- 設定例: `EJ$5W%sisjw.sw$EW`（クォートなし、`"`なし）
+
+---
+
+## 28. トラブルシューティング
+
+| 症状 | 原因 | 対策 |
+|------|------|------|
+| 502/503エラー | Renderスリープ or ビルド中 | UptimeRobot確認。Manual Deploy完了まで待つ |
+| 「認証中...」のまま動かない | SITE_PASSWORDにクォート含む、またはサーバー未起動 | 環境変数確認、15秒タイムアウトで自動エラー表示 |
+| 承認500エラー | `approved_by`がUUID形式でない | USE_MOCK=trueなら`null`に自動設定済み |
+| 文字起こし全文が空 | `?include_transcript=true`未付与 | 修正済み（meetings/[id]/page.tsx） |
+| 要約が短い | 旧プロンプトで生成された | 「再生成」ボタンで新プロンプト適用 |
+| Google Docs利用規約違反 | `anyone: writer`でフラグされた | `GOOGLE_DRIVE_SHARE_EMAIL`で特定ユーザーに変更済み |
+| JSON解析エラー | Claudeが````json```で囲んで返す | callClaude内で自動除去済み |
+| 取り込みが永遠に「処理中」 | Jamroll APIが120秒ハング | プレースホルダーキー検出で即エラー + 30秒クライアントタイムアウト |
+| useSearchParamsビルドエラー | Suspense未ラップ | meetings/page.tsxでSuspense対応済み |
+
+---
+
+## 29. 残課題
 
 | 項目 | 状態 | 詳細 |
 |------|------|------|
