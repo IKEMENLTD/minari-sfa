@@ -101,7 +101,7 @@ function MeetingsContent() {
             </p>
           )}
         </div>
-        <div className="w-full sm:w-48">
+        <div data-guide="filter-select" className="w-full sm:w-48">
           <Select
             options={statusOptions}
             value={statusFilter}

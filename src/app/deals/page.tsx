@@ -98,6 +98,7 @@ export default function DealsPage() {
             onClick={handleSheetSync}
             loading={syncing}
             disabled={syncing}
+            data-guide="sync-button"
           >
             <Sheet className="h-3.5 w-3.5" />
             {syncing ? '同期中...' : 'スプシに同期'}

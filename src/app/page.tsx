@@ -10,6 +10,7 @@ import {
   AlertCircle,
   ArrowRight,
 } from 'lucide-react';
+import WelcomeModal from '@/components/guide/welcome-modal';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -134,6 +135,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 overflow-x-hidden">
+      <WelcomeModal />
       <h1 className="text-xl font-semibold text-text">ホーム</h1>
 
       {error && (
@@ -151,7 +153,7 @@ export default function DashboardPage() {
       )}
 
       {/* サマリーカード */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div data-guide="summary-cards" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           icon={CheckCircle}
           label="承認待ち"

@@ -205,6 +205,7 @@ export default function ApprovalPage() {
             loading={processing}
             onClick={handleProcess}
             disabled={processing}
+            data-guide="fetch-button"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             {processing ? '処理中...' : '新しい議事録を取り込む'}
@@ -311,7 +312,7 @@ export default function ApprovalPage() {
           <p className="text-sm">全て完了しました</p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div data-guide="approval-cards" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {meetings.map((meeting) => (
             <ApprovalCard
               key={meeting.id}
