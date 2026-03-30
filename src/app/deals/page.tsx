@@ -103,7 +103,7 @@ export default function DealsPage() {
             <Sheet className="h-3.5 w-3.5" />
             {syncing ? '同期中...' : 'スプシに同期'}
           </Button>
-          <div className="w-full sm:w-56">
+          <div data-guide="deals-search" className="w-full sm:w-56">
             <Input
               placeholder="企業名で検索..."
               value={search}

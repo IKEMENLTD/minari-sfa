@@ -25,6 +25,7 @@ function Header() {
         <button
           type="button"
           onClick={handleLogout}
+          data-guide="logout-button"
           className="ml-2 flex items-center gap-1 text-text-secondary hover:text-text transition-colors"
           aria-label="ログアウト"
         >

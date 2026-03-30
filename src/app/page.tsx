@@ -181,7 +181,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 承認待ち商談 */}
-      <div>
+      <div data-guide="pending-section">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold text-text">承認待ち商談</h2>
           {!loading && data && data.pendingCount > 0 ? (

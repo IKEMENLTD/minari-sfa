@@ -300,6 +300,7 @@ export default function ApprovalPage() {
         </div>
       )}
 
+      <div data-guide="approval-area">
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -324,6 +325,7 @@ export default function ApprovalPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
