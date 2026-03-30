@@ -16,8 +16,11 @@ const SHEET_MEETINGS = '商談履歴';
 const COMPANY_HEADERS = [
   '企業名', '現在フェーズ', 'フェーズNo', 'ネクストアクション', '最終商談日',
   '経過日数', '商談回数', '初回商談日', 'ステータス要約',
-  'ティア', '担当者', '期待収益', 'SKU数', '分析Doc', 'PLOUD原本', '最終更新',
+  'ティア', '担当者', '期待収益', 'SKU数', '分析Doc', 'PLOUD原本', 'NotebookLM', '最終更新',
 ];
+
+// NotebookLM列は手動入力のため、同期時に保持する列インデックス（0始まり）
+const NLM_COL_INDEX = 15; // P列
 
 const MEETING_HEADERS = [
   '商談日', '企業名', 'ステータス', '参加者', 'ソース',
@@ -55,6 +58,34 @@ async function ensureSheets(spreadsheetId: string, token: string, signal: AbortS
       signal,
     });
   }
+}
+
+/**
+ * 企業マスタから手動入力列（NotebookLM URL等）を読み取り、企業名→値のマップを返す
+ * 同期で全面置換する前にこの値を保持し、書き戻す
+ */
+async function readManualColumns(
+  spreadsheetId: string,
+  token: string,
+  signal: AbortSignal,
+): Promise<Map<string, string>> {
+  const range = `${SHEET_COMPANY}!A2:Q1000`;
+  const res = await fetch(
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}`,
+    { headers: { Authorization: `Bearer ${token}` }, signal },
+  );
+  if (!res.ok) return new Map();
+
+  const data = (await res.json()) as { values?: string[][] };
+  const map = new Map<string, string>();
+  for (const row of data.values ?? []) {
+    const companyName = row[0];
+    const nlmUrl = row[NLM_COL_INDEX] ?? '';
+    if (companyName && nlmUrl) {
+      map.set(companyName, nlmUrl);
+    }
+  }
+  return map;
 }
 
 async function clearAndWrite(
@@ -120,6 +151,9 @@ export async function syncAllToSheet(spreadsheetId: string): Promise<SheetSyncRe
 
     const supabase = createServerSupabaseClient();
     const now = new Date().toISOString().split('T')[0];
+
+    // 手動入力列（NotebookLM URL等）を先に読み取って保持
+    const manualNlmUrls = await readManualColumns(spreadsheetId, token, controller.signal);
 
     // ===== 企業マスタ =====
 
@@ -228,7 +262,8 @@ export async function syncAllToSheet(spreadsheetId: string): Promise<SheetSyncRe
         (company.sku_count as number)?.toString() ?? '',                     // M: SKU数
         salesDeckDocUrl,                                                     // N: 分析Doc
         proudDocUrl,                                                         // O: PLOUD原本
-        now,                                                                 // P: 最終更新
+        manualNlmUrls.get(company.name as string) ?? '',                    // P: NotebookLM（手動入力を保持）
+        now,                                                                 // Q: 最終更新
       ]);
     }
 
