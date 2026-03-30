@@ -1,10 +1,16 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { GuideProvider } from '@/components/guide/guide-provider';
 import { HelpButton } from '@/components/guide/help-button';
 import { GuideOverlay } from '@/components/guide/guide-overlay';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
 
 export const metadata: Metadata = {
   title: 'SALES DECK',
