@@ -12,12 +12,14 @@ interface GuideTooltipProps {
 type ResolvedPosition = 'top' | 'bottom' | 'left' | 'right';
 
 const GAP = 16;
-const TOOLTIP_MAX_WIDTH = 384; // max-w-sm
+const TOOLTIP_MAX_WIDTH = 384;
 
 function resolvePosition(
-  position: GuideStep['position'],
-  rect: DOMRect | null
+  step: GuideStep,
+  rect: DOMRect | null,
+  isMobile: boolean
 ): ResolvedPosition {
+  const position = (isMobile && step.mobilePosition) || step.position;
   if (position !== 'auto') return position;
   if (!rect) return 'bottom';
 
@@ -27,7 +29,7 @@ function resolvePosition(
 }
 
 function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
+  return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
 export function GuideTooltip({ targetRect, step }: GuideTooltipProps) {
@@ -40,8 +42,7 @@ export function GuideTooltip({ targetRect, step }: GuideTooltipProps) {
   const isMobile =
     typeof window !== 'undefined' ? window.innerWidth < 768 : false;
 
-  const { style, resolved } = useMemo(() => {
-    // Mobile: fixed bottom
+  const { style, resolved, arrowLeft } = useMemo(() => {
     if (isMobile) {
       return {
         style: {
@@ -51,10 +52,10 @@ export function GuideTooltip({ targetRect, step }: GuideTooltipProps) {
           right: 0,
         },
         resolved: 'bottom' as ResolvedPosition,
+        arrowLeft: 0,
       };
     }
 
-    // No target: center of screen
     if (!targetRect) {
       return {
         style: {
@@ -64,75 +65,64 @@ export function GuideTooltip({ targetRect, step }: GuideTooltipProps) {
           transform: 'translate(-50%, -50%)',
         },
         resolved: 'bottom' as ResolvedPosition,
+        arrowLeft: 0,
       };
     }
 
-    const pos = resolvePosition(step.position, targetRect);
+    const pos = resolvePosition(step, targetRect, isMobile);
     const computedStyle: Record<string, string | number> = {
       position: 'absolute',
     };
+    let arrowLeftPx = 0;
+
+    const targetCenterX = targetRect.left + targetRect.width / 2;
 
     switch (pos) {
       case 'bottom': {
         computedStyle.top = targetRect.bottom + GAP;
-        const idealLeft =
-          targetRect.left + targetRect.width / 2 - TOOLTIP_MAX_WIDTH / 2;
-        computedStyle.left = clamp(
-          idealLeft,
-          8,
-          window.innerWidth - TOOLTIP_MAX_WIDTH - 8
-        );
+        const idealLeft = targetCenterX - TOOLTIP_MAX_WIDTH / 2;
+        const clampedLeft = clamp(idealLeft, 8, window.innerWidth - TOOLTIP_MAX_WIDTH - 8);
+        computedStyle.left = clampedLeft;
+        arrowLeftPx = targetCenterX - clampedLeft;
         break;
       }
       case 'top': {
         computedStyle.bottom = window.innerHeight - targetRect.top + GAP;
-        const idealLeft =
-          targetRect.left + targetRect.width / 2 - TOOLTIP_MAX_WIDTH / 2;
-        computedStyle.left = clamp(
-          idealLeft,
-          8,
-          window.innerWidth - TOOLTIP_MAX_WIDTH - 8
-        );
+        const idealLeft = targetCenterX - TOOLTIP_MAX_WIDTH / 2;
+        const clampedLeft = clamp(idealLeft, 8, window.innerWidth - TOOLTIP_MAX_WIDTH - 8);
+        computedStyle.left = clampedLeft;
+        arrowLeftPx = targetCenterX - clampedLeft;
         break;
       }
       case 'right': {
         computedStyle.left = targetRect.right + GAP;
-        computedStyle.top = clamp(
-          targetRect.top,
-          8,
-          window.innerHeight - 200
-        );
+        computedStyle.top = clamp(targetRect.top, 8, window.innerHeight - 200);
         break;
       }
       case 'left': {
-        computedStyle.right =
-          window.innerWidth - targetRect.left + GAP;
-        computedStyle.top = clamp(
-          targetRect.top,
-          8,
-          window.innerHeight - 200
-        );
+        computedStyle.right = window.innerWidth - targetRect.left + GAP;
+        computedStyle.top = clamp(targetRect.top, 8, window.innerHeight - 200);
         break;
       }
     }
 
-    return { style: computedStyle, resolved: pos };
-  }, [targetRect, step.position, isMobile]);
+    return { style: computedStyle, resolved: pos, arrowLeft: arrowLeftPx };
+  }, [targetRect, step, isMobile]);
 
   return (
     <div
-      className={`${isMobile ? 'w-full rounded-t-xl' : 'max-w-sm w-[calc(100vw-2rem)]'} bg-[var(--color-surface)] border border-[var(--color-border)] shadow-lg p-4`}
+      className={`${isMobile ? 'w-full rounded-t-xl' : 'max-w-sm w-[calc(100vw-2rem)]'} bg-[var(--color-surface)] border border-[var(--color-border)] shadow-lg p-4 relative`}
       style={style}
+      onClick={(e) => e.stopPropagation()}
     >
-      {/* Arrow pointer (non-mobile only, with target) */}
       {!isMobile && targetRect && (
-        <ArrowPointer position={resolved} />
+        <ArrowPointer position={resolved} arrowLeft={arrowLeft} />
       )}
 
       <h3 className="font-bold text-base text-[var(--color-text)] mb-1">
         {step.title}
       </h3>
-      <p className="text-sm text-[var(--color-text-secondary)] mb-4">
+      <p className="text-sm text-[var(--color-text-secondary)] mb-4 leading-relaxed">
         {step.description}
       </p>
 
@@ -142,7 +132,7 @@ export function GuideTooltip({ targetRect, step }: GuideTooltipProps) {
           <span
             key={i}
             className={`w-2 h-2 rounded-full transition-colors ${
-              i === currentStep
+              i <= currentStep
                 ? 'bg-[var(--color-accent)]'
                 : 'bg-[var(--color-border)]'
             }`}
@@ -167,7 +157,7 @@ export function GuideTooltip({ targetRect, step }: GuideTooltipProps) {
             <button
               type="button"
               onClick={prevStep}
-              className="text-sm border border-[var(--color-border)] text-[var(--color-text)] px-3 py-1.5 rounded hover:bg-[var(--color-border)]/30 transition-colors"
+              className="text-sm border border-[var(--color-border)] text-[var(--color-text)] px-3 py-1.5 rounded hover:bg-[var(--color-muted)] transition-colors"
             >
               前へ
             </button>
@@ -175,7 +165,7 @@ export function GuideTooltip({ targetRect, step }: GuideTooltipProps) {
           <button
             type="button"
             onClick={isLast ? endTour : nextStep}
-            className="text-sm bg-[var(--color-accent)] text-white px-3 py-1.5 rounded hover:opacity-90 transition-opacity"
+            className="text-sm bg-[var(--color-accent)] text-white px-3 py-1.5 rounded hover:bg-[var(--color-accent-hover)] transition-colors"
           >
             {isLast ? '完了' : '次へ'}
           </button>
@@ -185,15 +175,18 @@ export function GuideTooltip({ targetRect, step }: GuideTooltipProps) {
   );
 }
 
-function ArrowPointer({ position }: { position: ResolvedPosition }) {
+function ArrowPointer({ position, arrowLeft }: { position: ResolvedPosition; arrowLeft: number }) {
   const base = 'absolute w-0 h-0';
 
   switch (position) {
     case 'bottom':
       return (
         <div
-          className={`${base} -top-2 left-1/2 -translate-x-1/2`}
+          className={base}
           style={{
+            top: -8,
+            left: arrowLeft > 0 ? clampArrow(arrowLeft) : '50%',
+            transform: arrowLeft > 0 ? 'translateX(-50%)' : 'translateX(-50%)',
             borderLeft: '8px solid transparent',
             borderRight: '8px solid transparent',
             borderBottom: '8px solid var(--color-surface)',
@@ -203,8 +196,11 @@ function ArrowPointer({ position }: { position: ResolvedPosition }) {
     case 'top':
       return (
         <div
-          className={`${base} -bottom-2 left-1/2 -translate-x-1/2`}
+          className={base}
           style={{
+            bottom: -8,
+            left: arrowLeft > 0 ? clampArrow(arrowLeft) : '50%',
+            transform: arrowLeft > 0 ? 'translateX(-50%)' : 'translateX(-50%)',
             borderLeft: '8px solid transparent',
             borderRight: '8px solid transparent',
             borderTop: '8px solid var(--color-surface)',
@@ -234,4 +230,8 @@ function ArrowPointer({ position }: { position: ResolvedPosition }) {
         />
       );
   }
+}
+
+function clampArrow(px: number): number {
+  return Math.min(Math.max(px, 16), TOOLTIP_MAX_WIDTH - 16);
 }

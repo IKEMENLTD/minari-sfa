@@ -4,21 +4,25 @@ import { useState, useEffect, useCallback } from 'react';
 import { isWelcomeDismissed, dismissWelcome } from '@/lib/guide-storage';
 import { useGuide } from '@/components/guide/guide-provider';
 
+const SESSION_KEY = 'sd_welcome_closed_session';
+
 export default function WelcomeModal() {
   const [visible, setVisible] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const { startTour } = useGuide();
 
   useEffect(() => {
-    if (!isWelcomeDismissed()) {
-      setVisible(true);
-    }
+    // Don't show if dismissed for 7 days or already closed this session
+    if (isWelcomeDismissed()) return;
+    if (sessionStorage.getItem(SESSION_KEY) === 'true') return;
+    setVisible(true);
   }, []);
 
   const handleClose = useCallback(() => {
     if (dontShowAgain) {
       dismissWelcome(7);
     }
+    sessionStorage.setItem(SESSION_KEY, 'true');
     setVisible(false);
   }, [dontShowAgain]);
 
@@ -26,8 +30,9 @@ export default function WelcomeModal() {
     if (dontShowAgain) {
       dismissWelcome(7);
     }
-    startTour();
+    sessionStorage.setItem(SESSION_KEY, 'true');
     setVisible(false);
+    startTour();
   }, [dontShowAgain, startTour]);
 
   if (!visible) {
@@ -36,14 +41,12 @@ export default function WelcomeModal() {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={handleClose}
         role="presentation"
       />
 
-      {/* Card */}
       <div className="relative bg-[var(--color-surface)] rounded-lg max-w-md w-[calc(100%-2rem)] p-6 mx-auto">
         <h2 className="font-bold text-xl text-[var(--color-text)] mb-3">
           SALES DECK へようこそ
@@ -57,7 +60,6 @@ export default function WelcomeModal() {
           使い方を知りたい方は、ガイドツアーで操作方法をステップバイステップで確認できます。
         </p>
 
-        {/* Checkbox */}
         <label className="flex items-center gap-2 mb-5 cursor-pointer text-sm text-[var(--color-text-secondary)]">
           <input
             type="checkbox"
@@ -68,7 +70,6 @@ export default function WelcomeModal() {
           7日間表示しない
         </label>
 
-        {/* Buttons */}
         <div className="flex items-center justify-end gap-3">
           <button
             type="button"

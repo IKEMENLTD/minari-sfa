@@ -6,19 +6,30 @@ import { GUIDE_STEPS } from './guide-steps';
 import { GuideTooltip } from './guide-tooltip';
 
 export function GuideOverlay() {
-  const { isActive, currentStep } = useGuide();
+  const { isActive, currentStep, skipTour } = useGuide();
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updateRect = useCallback((element: Element) => {
     const rect = element.getBoundingClientRect();
+    // Skip hidden elements (display:none returns all zeros)
+    if (rect.width === 0 && rect.height === 0) {
+      setTargetRect(null);
+      return;
+    }
     setTargetRect(rect);
   }, []);
 
+  const getSelector = useCallback(() => {
+    const step = GUIDE_STEPS[currentStep];
+    if (!step) return null;
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    return (isMobile && step.mobileTargetSelector) || step.targetSelector;
+  }, [currentStep]);
+
   const findAndTrackElement = useCallback(
     (selector: string) => {
-      // Clean up previous observer
       if (observerRef.current) {
         observerRef.current.disconnect();
         observerRef.current = null;
@@ -35,10 +46,22 @@ export function GuideOverlay() {
         const element = document.querySelector(selector);
 
         if (element) {
+          const rect = element.getBoundingClientRect();
+          // Skip hidden elements
+          if (rect.width === 0 && rect.height === 0) {
+            if (Date.now() - startTime < maxRetryMs) {
+              retryTimerRef.current = setTimeout(() => {
+                requestAnimationFrame(tryFind);
+              }, 100);
+            } else {
+              setTargetRect(null);
+            }
+            return;
+          }
+
           updateRect(element);
 
           // Scroll into view if off-screen
-          const rect = element.getBoundingClientRect();
           const isOffScreen =
             rect.bottom < 0 ||
             rect.top > window.innerHeight ||
@@ -47,29 +70,24 @@ export function GuideOverlay() {
 
           if (isOffScreen) {
             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Re-measure after scroll
             requestAnimationFrame(() => {
               updateRect(element);
             });
           }
 
-          // Observe resize
           const resizeObserver = new ResizeObserver(() => {
             updateRect(element);
           });
           resizeObserver.observe(element);
           observerRef.current = resizeObserver;
-
           return;
         }
 
-        // Retry with rAF until max time
         if (Date.now() - startTime < maxRetryMs) {
           retryTimerRef.current = setTimeout(() => {
             requestAnimationFrame(tryFind);
           }, 100);
         } else {
-          // Element not found, show overlay without spotlight
           setTargetRect(null);
         }
       };
@@ -79,17 +97,16 @@ export function GuideOverlay() {
     [updateRect]
   );
 
-  // Track current step's target element
   useEffect(() => {
     if (!isActive) {
       setTargetRect(null);
       return;
     }
 
-    const step = GUIDE_STEPS[currentStep];
-    if (!step) return;
+    const selector = getSelector();
+    if (!selector) return;
 
-    findAndTrackElement(step.targetSelector);
+    findAndTrackElement(selector);
 
     return () => {
       if (observerRef.current) {
@@ -101,16 +118,15 @@ export function GuideOverlay() {
         retryTimerRef.current = null;
       }
     };
-  }, [isActive, currentStep, findAndTrackElement]);
+  }, [isActive, currentStep, findAndTrackElement, getSelector]);
 
-  // Re-measure on scroll and resize
   useEffect(() => {
     if (!isActive) return;
 
     const handleUpdate = () => {
-      const step = GUIDE_STEPS[currentStep];
-      if (!step) return;
-      const element = document.querySelector(step.targetSelector);
+      const selector = getSelector();
+      if (!selector) return;
+      const element = document.querySelector(selector);
       if (element) {
         updateRect(element);
       }
@@ -123,7 +139,21 @@ export function GuideOverlay() {
       window.removeEventListener('scroll', handleUpdate);
       window.removeEventListener('resize', handleUpdate);
     };
-  }, [isActive, currentStep, updateRect]);
+  }, [isActive, currentStep, updateRect, getSelector]);
+
+  // Escape key to exit tour
+  useEffect(() => {
+    if (!isActive) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        skipTour();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isActive, skipTour]);
 
   if (!isActive) return null;
 
@@ -132,7 +162,13 @@ export function GuideOverlay() {
 
   return (
     <div className="fixed inset-0 z-[9998]">
-      <svg className="absolute inset-0 w-full h-full">
+      {/* Click dark area to exit */}
+      <div
+        className="absolute inset-0"
+        onClick={skipTour}
+        role="presentation"
+      />
+      <svg className="absolute inset-0 w-full h-full pointer-events-none">
         <defs>
           <mask id="guide-mask">
             <rect fill="white" width="100%" height="100%" />

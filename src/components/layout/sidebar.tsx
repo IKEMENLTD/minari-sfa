@@ -84,6 +84,7 @@ function Sidebar() {
 
       {/* Mobile hamburger button */}
       <button
+        data-guide="mobile-menu"
         className="fixed top-3 left-3 z-50 rounded-md border border-border bg-surface p-2 shadow-sm md:hidden"
         onClick={() => setMobileOpen(!mobileOpen)}
         aria-label="メニュー"
