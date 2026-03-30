@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { ChevronDown, ChevronRight, RefreshCw, FileText } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, FileText, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
@@ -160,7 +160,7 @@ function MeetingDetailView({ meeting, onResummarize }: MeetingDetailProps) {
               {meeting.summary.summary_text}
             </p>
             {(resummarizeMessage || exportMessage) && (
-              <div className="mt-3 space-y-1">
+              <div className="mt-3 space-y-2">
                 {exportMessage && (
                   <p className="text-xs text-text-secondary">
                     {exportMessage.includes('→') ? (
@@ -179,6 +179,17 @@ function MeetingDetailView({ meeting, onResummarize }: MeetingDetailProps) {
                       exportMessage
                     )}
                   </p>
+                )}
+                {exportMessage && exportMessage.includes('→') && (
+                  <a
+                    href="https://notebooklm.google.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded border border-border bg-muted px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text hover:bg-border/30 transition-colors"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    NotebookLMで分析する
+                  </a>
                 )}
                 {resummarizeMessage && (
                   <p className="text-xs text-text-secondary">{resummarizeMessage}</p>
