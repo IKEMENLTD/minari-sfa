@@ -18,7 +18,7 @@ const COMPANY_HEADERS = [
 ];
 
 const MEETING_HEADERS = [
-  '商談日', '企業名', '参加者', 'ソース',
+  '商談日', '企業名', 'ステータス', '参加者', 'ソース',
   'AI推定企業名', '修正後企業名', '承認日時',
   '要約（先頭300文字）', 'Google Docs',
 ];
@@ -196,10 +196,15 @@ export async function syncAllToSheet(spreadsheetId: string): Promise<SheetSyncRe
 
     // ===== 商談履歴 =====
 
+    const statusLabel: Record<string, string> = {
+      pending: '承認待ち',
+      approved: '承認済み',
+      rejected: '却下',
+    };
+
     const { data: allMeetings } = await supabase
       .from('meetings')
       .select('id, meeting_date, participants, source, ai_estimated_company, approval_status, approved_at, company_id')
-      .eq('approval_status', 'approved')
       .order('meeting_date', { ascending: false });
 
     const meetingRows: string[][] = [];
@@ -244,13 +249,14 @@ export async function syncAllToSheet(spreadsheetId: string): Promise<SheetSyncRe
       meetingRows.push([
         (m.meeting_date as string) ?? '',                                    // A: 商談日
         companyName,                                                         // B: 企業名
-        ((m.participants as string[]) ?? []).join(', '),                     // C: 参加者
-        (m.source as string) ?? '',                                          // D: ソース
-        (m.ai_estimated_company as string) ?? '',                            // E: AI推定企業名
-        (approval?.corrected_company as string) ?? '',                       // F: 修正後企業名
-        ((m.approved_at as string) ?? '').split('T')[0],                    // G: 承認日時
-        ((summary?.summary_text as string) ?? '').slice(0, 300),            // H: 要約
-        docsUrl,                                                             // I: Google Docs
+        statusLabel[(m.approval_status as string)] ?? (m.approval_status as string), // C: ステータス
+        ((m.participants as string[]) ?? []).join(', '),                     // D: 参加者
+        (m.source as string) ?? '',                                          // E: ソース
+        (m.ai_estimated_company as string) ?? '',                            // F: AI推定企業名
+        (approval?.corrected_company as string) ?? '',                       // G: 修正後企業名
+        ((m.approved_at as string) ?? '').split('T')[0],                    // H: 承認日時
+        ((summary?.summary_text as string) ?? '').slice(0, 300),            // I: 要約
+        docsUrl,                                                             // J: Google Docs
       ]);
     }
 
