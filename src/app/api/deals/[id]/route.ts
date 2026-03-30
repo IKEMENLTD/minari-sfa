@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
+import { syncAllToSheet } from '@/lib/external/google-sheets';
 import type { DealWithDetails, ApiResult } from '@/types';
+
+const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID ?? '';
 
 // ---------------------------------------------------------------------------
 // バリデーション
@@ -167,6 +170,13 @@ export async function PATCH(
       company: updatedCompany as DealWithDetails['company'],
       phase: updatedPhase as DealWithDetails['phase'],
     };
+
+    // スプレッドシート同期（非同期、失敗しても案件更新には影響しない）
+    if (GOOGLE_SHEET_ID) {
+      syncAllToSheet(GOOGLE_SHEET_ID).catch((e) => {
+        console.error('スプレッドシート同期失敗:', e instanceof Error ? e.message : e);
+      });
+    }
 
     return NextResponse.json({ data: deal, error: null });
   } catch (err) {
