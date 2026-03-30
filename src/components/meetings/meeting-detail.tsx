@@ -48,8 +48,8 @@ function MeetingDetailView({ meeting, onResummarize }: MeetingDetailProps) {
       const json: { data: { docUrl: string; isNew: boolean } } = await res.json();
       setExportMessage(
         json.data.isNew
-          ? 'Google Docsを新規作成しました'
-          : 'Google Docsに追記しました'
+          ? `新規作成しました → ${json.data.docUrl}`
+          : `更新しました（分析レポート再生成済み） → ${json.data.docUrl}`
       );
     } catch (e) {
       setExportMessage(e instanceof Error ? e.message : '書き出しに失敗しました');
@@ -160,11 +160,30 @@ function MeetingDetailView({ meeting, onResummarize }: MeetingDetailProps) {
               {meeting.summary.summary_text}
             </p>
             {(resummarizeMessage || exportMessage) && (
-              <p className="mt-3 text-xs text-text-secondary">
-                {resummarizeMessage}
-                {resummarizeMessage && exportMessage && ' / '}
-                {exportMessage}
-              </p>
+              <div className="mt-3 space-y-1">
+                {exportMessage && (
+                  <p className="text-xs text-text-secondary">
+                    {exportMessage.includes('→') ? (
+                      <>
+                        {exportMessage.split('→')[0]}→{' '}
+                        <a
+                          href={exportMessage.split('→ ')[1]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-accent hover:underline"
+                        >
+                          Google Docsを開く
+                        </a>
+                      </>
+                    ) : (
+                      exportMessage
+                    )}
+                  </p>
+                )}
+                {resummarizeMessage && (
+                  <p className="text-xs text-text-secondary">{resummarizeMessage}</p>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

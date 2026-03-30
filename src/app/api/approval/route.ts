@@ -4,7 +4,10 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
 import { judgeSalesPhase } from '@/lib/external/claude';
 import { exportMeetingToDoc } from '@/lib/export-to-doc';
+import { syncCompanyToSheet, appendMeetingToSheet } from '@/lib/external/google-sheets';
 import type { ApprovalRow, ApiResult } from '@/types';
+
+const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID ?? '';
 
 // ---------------------------------------------------------------------------
 // バリデーション
@@ -281,15 +284,100 @@ export async function POST(
       }
 
       // --- Google Docs 自動書き出し（分析レポート付き） ---
+      let docUrl: string | null = null;
       try {
         const docResult = await exportMeetingToDoc(meetingId);
         if (docResult) {
+          docUrl = docResult.docUrl;
           console.log(`Google Docs 自動書き出し完了: ${docResult.docUrl} (新規: ${docResult.isNew})`);
         }
       } catch (exportError) {
         const exportErrMsg = exportError instanceof Error ? exportError.message : '不明なエラー';
         console.error('Google Docs 自動書き出しに失敗しました:', exportErrMsg);
-        // 書き出し失敗は承認処理自体には影響させない
+      }
+
+      // --- Google Sheets 自動更新（顧客管理スプレッドシート） ---
+      if (GOOGLE_SHEET_ID) {
+        try {
+          // 企業の承認済み商談数を取得
+          const { count: meetingCount } = await supabase
+            .from('meetings')
+            .select('id', { count: 'exact', head: true })
+            .eq('company_id', companyId)
+            .eq('approval_status', 'approved');
+
+          // 企業情報を取得
+          const { data: companyData } = await supabase
+            .from('companies')
+            .select('name, tier, assigned_to')
+            .eq('id', companyId)
+            .single();
+
+          // deal_statusesからフェーズ名を取得
+          const { data: dealData } = await supabase
+            .from('deal_statuses')
+            .select('next_action, status_summary, last_meeting_date, current_phase_id')
+            .eq('company_id', companyId)
+            .single();
+
+          let phaseName: string | null = null;
+          if (dealData?.current_phase_id) {
+            const { data: phaseRow } = await supabase
+              .from('sales_phases')
+              .select('phase_name')
+              .eq('id', dealData.current_phase_id as string)
+              .single();
+            phaseName = (phaseRow?.phase_name as string) ?? null;
+          }
+
+          // Google Docs URLを取得（書き出し成功時はdocUrl、失敗時はDBから）
+          if (!docUrl) {
+            const { data: docRow } = await supabase
+              .from('google_docs')
+              .select('doc_url')
+              .eq('company_id', companyId)
+              .single();
+            docUrl = (docRow?.doc_url as string) ?? null;
+          }
+
+          // 企業マスタシートを更新
+          await syncCompanyToSheet(GOOGLE_SHEET_ID, {
+            companyName: (companyData?.name as string) ?? confirmedCompanyName,
+            tier: (companyData?.tier as string) ?? null,
+            assignedTo: (companyData?.assigned_to as string) ?? null,
+            meetingCount: meetingCount ?? 0,
+            lastMeetingDate: (dealData?.last_meeting_date as string) ?? (meeting.meeting_date as string),
+            currentPhase: phaseName,
+            nextAction: (dealData?.next_action as string) ?? null,
+            statusSummary: (dealData?.status_summary as string) ?? null,
+            googleDocsUrl: docUrl,
+            riskNote: null,
+          });
+
+          // 商談の要約を取得
+          const { data: summaryData } = await supabase
+            .from('summaries')
+            .select('summary_text')
+            .eq('meeting_id', meetingId)
+            .single();
+
+          // 商談履歴シートに追加
+          await appendMeetingToSheet(GOOGLE_SHEET_ID, {
+            meetingDate: meeting.meeting_date as string,
+            companyName: confirmedCompanyName,
+            participants: (meeting as Record<string, unknown>).participants as string[] ?? [],
+            source: 'approved',
+            summaryExcerpt: (summaryData?.summary_text as string) ?? '',
+            aiEstimatedCompany: aiEstimatedCompany,
+            correctedCompany: correctedCompany ?? null,
+          });
+
+          console.log(`Google Sheets 自動更新完了: ${confirmedCompanyName}`);
+        } catch (sheetError) {
+          const sheetErrMsg = sheetError instanceof Error ? sheetError.message : '不明なエラー';
+          console.error('Google Sheets 自動更新に失敗しました:', sheetErrMsg);
+          // Sheets更新失敗は承認処理自体には影響させない
+        }
       }
     }
 

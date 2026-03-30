@@ -8,7 +8,7 @@ import type { ProudNoteFile } from '@/types';
 
 const GOOGLE_DOCS_API = 'https://docs.googleapis.com/v1/documents';
 const GOOGLE_DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
-const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents';
+const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/spreadsheets';
 
 interface ServiceAccountCredentials {
   client_email: string;
@@ -55,7 +55,7 @@ let cachedToken: { token: string; expiresAt: number } | null = null;
 /**
  * サービスアカウントのJWTを生成し、OAuthトークンを取得する（キャッシュ付き）
  */
-async function getAccessToken(signal: AbortSignal): Promise<string> {
+export async function getAccessToken(signal: AbortSignal): Promise<string> {
   // キャッシュが有効ならそのまま返す
   if (cachedToken && Date.now() < cachedToken.expiresAt) {
     return cachedToken.token;
