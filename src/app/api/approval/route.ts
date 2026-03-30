@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
 import { judgeSalesPhase } from '@/lib/external/claude';
+import { exportMeetingToDoc } from '@/lib/export-to-doc';
 import type { ApprovalRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -277,6 +278,18 @@ export async function POST(
         const phaseErrMsg = phaseError instanceof Error ? phaseError.message : '不明なエラー';
         console.error('フェーズ判定に失敗しました:', phaseErrMsg);
         // フェーズ判定失敗は承認処理自体には影響させない
+      }
+
+      // --- Google Docs 自動書き出し（分析レポート付き） ---
+      try {
+        const docResult = await exportMeetingToDoc(meetingId);
+        if (docResult) {
+          console.log(`Google Docs 自動書き出し完了: ${docResult.docUrl} (新規: ${docResult.isNew})`);
+        }
+      } catch (exportError) {
+        const exportErrMsg = exportError instanceof Error ? exportError.message : '不明なエラー';
+        console.error('Google Docs 自動書き出しに失敗しました:', exportErrMsg);
+        // 書き出し失敗は承認処理自体には影響させない
       }
     }
 

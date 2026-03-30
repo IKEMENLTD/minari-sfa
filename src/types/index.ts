@@ -225,3 +225,14 @@ export interface SalesPhaseJudgment {
   nextAction: string;
   statusSummary: string;
 }
+
+/** Claude API 分析レポート結果 */
+export interface AnalysisReportResult {
+  executiveSummary: string;
+  keyInsights: string;
+  challengesAndNeeds: string;
+  timeline: string;
+  faq: string;
+  riskAssessment: string;
+  recommendedActions: string;
+}

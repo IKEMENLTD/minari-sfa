@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { API_TIMEOUT_MS } from '@/lib/constants';
-import type { MeetingSummaryResult, SalesPhaseJudgment } from '@/types';
+import type { MeetingSummaryResult, SalesPhaseJudgment, AnalysisReportResult } from '@/types';
 import { SALES_PHASES } from '@/lib/constants';
 
 // ---------------------------------------------------------------------------
@@ -18,6 +18,16 @@ const salesPhaseJudgmentSchema = z.object({
   phaseId: z.string(),
   nextAction: z.string(),
   statusSummary: z.string(),
+}).strict();
+
+const analysisReportSchema = z.object({
+  executiveSummary: z.string(),
+  keyInsights: z.string(),
+  challengesAndNeeds: z.string(),
+  timeline: z.string(),
+  faq: z.string(),
+  riskAssessment: z.string(),
+  recommendedActions: z.string(),
 }).strict();
 
 // ---------------------------------------------------------------------------
@@ -224,6 +234,58 @@ ${phaseList}
 
     const rawParsed: unknown = JSON.parse(result);
     const validated = salesPhaseJudgmentSchema.parse(rawParsed);
+    return validated;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * 企業の全商談履歴から分析レポートを自動生成する
+ * NotebookLM相当の分析をClaude APIで実行し、Google Docsに統合する
+ */
+export async function generateAnalysisReport(
+  companyName: string,
+  companyMeetings: string[]
+): Promise<AnalysisReportResult> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    const systemPrompt = `あなたは SaaS 営業のインテリジェンスアナリストです。
+企業との全商談履歴を分析し、営業戦略に直結する包括的な分析レポートを作成してください。
+
+## 出力ルール
+- 各セクションは **そのまま Google Docs に掲載される** ため、読みやすい文章で書くこと
+- 箇条書き・番号付きリストを活用して構造化すること
+- 具体的な数値・固有名詞・日付は一つも漏らさないこと
+- 推測には必ず「（推測）」と明記すること
+- 1商談しかない場合でも、得られる情報から最大限の分析を行うこと
+
+## 回答形式（JSON のみ出力。マークダウンのコードブロックで囲まないこと）
+{
+  "executiveSummary": "全体像を3〜5文で要約。企業の規模感、商談の進捗度合い、受注確度の印象を含める",
+  "keyInsights": "商談から読み取れる重要な洞察を箇条書きで5〜10項目。顧客の意思決定パターン、キーパーソンの態度変化、競合との差別化ポイントなど",
+  "challengesAndNeeds": "顧客が抱える課題とニーズを構造化して記述。【課題名】: 詳細説明 の形式で。優先度が高い順に並べる",
+  "timeline": "全商談を時系列で整理。各商談の日付、主要議題、進展した点、停滞した点を簡潔にまとめる",
+  "faq": "この案件について社内で聞かれそうな質問と回答を5〜8組。Q: ... A: ... の形式",
+  "riskAssessment": "失注リスク・遅延リスク・競合リスクを具体的に列挙。各リスクに対する根拠と影響度（高/中/低）を明記",
+  "recommendedActions": "今すぐやるべきアクションを優先度順に列挙。各アクションに【期限目安】と【担当】を付与"
+}`;
+
+    const meetingsSummary = companyMeetings
+      .map((m, i) => `--- 商談${i + 1} ---\n${m}`)
+      .join('\n\n');
+
+    const result = await callClaude(
+      [{ role: 'user', content: `以下は「${companyName}」との全商談履歴です。包括的な分析レポートを作成してください:\n\n${meetingsSummary}` }],
+      systemPrompt,
+      controller.signal,
+      { maxTokens: 16384 }
+    );
+
+    const rawParsed: unknown = JSON.parse(result);
+    const validated = analysisReportSchema.parse(rawParsed);
     return validated;
   } finally {
     clearTimeout(timeoutId);

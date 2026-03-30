@@ -1,5 +1,7 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { replaceDocumentContent, createDocument } from '@/lib/external/google-drive';
+import { generateAnalysisReport } from '@/lib/external/claude';
+import type { AnalysisReportResult } from '@/types';
 
 const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID ?? '';
 
@@ -115,7 +117,9 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
       .single();
 
     const singleContent = buildSectionContent(meeting, summary, companyName);
-    await replaceDocumentContent(docId, buildFullDocument(companyName, [singleContent]));
+    const summaryTexts = summary?.summary_text ? [summary.summary_text as string] : [];
+    const analysisReport = await generateAnalysisReportSafe(companyName, summaryTexts);
+    await replaceDocumentContent(docId, buildFullDocument(companyName, [singleContent], analysisReport));
     return { docUrl, isNew };
   }
 
@@ -132,21 +136,84 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
   }
 
   const sections: string[] = [];
+  const summaryTexts: string[] = [];
   for (const m of allMeetings) {
     const summaryText = summaryMap.get(m.id as string) ?? '';
     sections.push(buildSectionContent(m, { summary_text: summaryText }, companyName));
+    if (summaryText) summaryTexts.push(summaryText);
   }
 
-  await replaceDocumentContent(docId, buildFullDocument(companyName, sections));
+  // 分析レポート生成（失敗しても議事録書き出しは継続）
+  const analysisReport = await generateAnalysisReportSafe(companyName, summaryTexts);
+  await replaceDocumentContent(docId, buildFullDocument(companyName, sections, analysisReport));
 
   return { docUrl, isNew };
 }
 
 // ---- ヘルパー関数 ----
 
-function buildFullDocument(companyName: string, sections: string[]): string {
+/**
+ * 分析レポート生成（失敗時はnullを返し、議事録書き出しを妨げない）
+ */
+async function generateAnalysisReportSafe(
+  companyName: string,
+  summaryTexts: string[],
+): Promise<AnalysisReportResult | null> {
+  if (summaryTexts.length === 0) return null;
+
+  try {
+    return await generateAnalysisReport(companyName, summaryTexts);
+  } catch (err) {
+    console.error('分析レポート生成に失敗しました（議事録書き出しは継続）:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/**
+ * 分析レポートセクションをテキストに変換する
+ */
+function buildAnalysisSection(report: AnalysisReportResult): string {
+  return [
+    `${'*'.repeat(50)}`,
+    `  AI 分析レポート（自動生成）`,
+    `  生成日時: ${new Date().toISOString().split('T')[0]}`,
+    `${'*'.repeat(50)}`,
+    '',
+    '[ エグゼクティブサマリー ]',
+    report.executiveSummary,
+    '',
+    '[ 重要インサイト ]',
+    report.keyInsights,
+    '',
+    '[ 課題・ニーズ分析 ]',
+    report.challengesAndNeeds,
+    '',
+    '[ 商談タイムライン ]',
+    report.timeline,
+    '',
+    '[ 想定FAQ ]',
+    report.faq,
+    '',
+    '[ リスク評価 ]',
+    report.riskAssessment,
+    '',
+    '[ 推奨アクション ]',
+    report.recommendedActions,
+    '',
+    `${'*'.repeat(50)}`,
+    '',
+  ].join('\n');
+}
+
+function buildFullDocument(
+  companyName: string,
+  sections: string[],
+  analysisReport?: AnalysisReportResult | null,
+): string {
   const header = `${companyName} - 商談議事録\n${'='.repeat(50)}\n\n`;
-  return header + sections.join('\n\n');
+  const analysisPart = analysisReport ? buildAnalysisSection(analysisReport) + '\n' : '';
+  const meetingsHeader = `${'='.repeat(50)}\n  個別商談記録\n${'='.repeat(50)}\n\n`;
+  return header + analysisPart + meetingsHeader + sections.join('\n\n');
 }
 
 function buildSectionContent(
