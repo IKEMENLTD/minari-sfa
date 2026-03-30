@@ -10,16 +10,17 @@ const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const SHEET_COMPANY = '企業マスタ';
 const SHEET_MEETINGS = '商談履歴';
 
-// ヘッダー行の定義
+// ヘッダー行の定義（CSVインポートと完全一致させること）
 const COMPANY_HEADERS = [
-  '企業名', 'ティア', '担当者', '商談回数', '最終商談日',
-  '現在フェーズ', 'ネクストアクション', 'ステータス要約',
-  'Google Docs', 'リスク',
+  '企業名', '現在フェーズ', 'フェーズNo', 'ネクストアクション', '最終商談日',
+  '経過日数', '商談回数', '初回商談日', 'ステータス要約',
+  'ティア', '担当者', '期待収益', 'SKU数', 'Google Docs', '最終更新',
 ];
 
 const MEETING_HEADERS = [
-  '日付', '企業名', '参加者', 'ソース', '要約（先頭200文字）',
-  'AI推定企業名', '修正後企業名',
+  '商談日', '企業名', '参加者', 'ソース',
+  'AI推定企業名', '修正後企業名', '承認日時',
+  '要約（先頭300文字）', 'Google Docs',
 ];
 
 /**
@@ -138,15 +139,18 @@ async function getCompanyRowMap(
 
 export interface CompanySheetData {
   companyName: string;
+  currentPhase: string | null;
+  phaseOrder: number | null;
+  nextAction: string | null;
+  lastMeetingDate: string | null;
+  meetingCount: number;
+  firstMeetingDate: string | null;
+  statusSummary: string | null;
   tier: string | null;
   assignedTo: string | null;
-  meetingCount: number;
-  lastMeetingDate: string | null;
-  currentPhase: string | null;
-  nextAction: string | null;
-  statusSummary: string | null;
+  expectedRevenue: number | null;
+  skuCount: number | null;
   googleDocsUrl: string | null;
-  riskNote: string | null;
 }
 
 export interface MeetingSheetData {
@@ -154,13 +158,16 @@ export interface MeetingSheetData {
   companyName: string;
   participants: string[];
   source: string;
-  summaryExcerpt: string;
   aiEstimatedCompany: string;
   correctedCompany: string | null;
+  approvedAt: string | null;
+  summaryExcerpt: string;
+  googleDocsUrl: string | null;
 }
 
 /**
  * 企業マスタシートを更新（UPSERT: 既存なら上書き、新規なら追加）
+ * カラム: A〜O（15列）
  */
 export async function syncCompanyToSheet(
   spreadsheetId: string,
@@ -174,26 +181,33 @@ export async function syncCompanyToSheet(
     const token = await getAccessToken(controller.signal);
     const rowMap = await getCompanyRowMap(spreadsheetId, token, controller.signal);
 
+    const now = new Date().toISOString().split('T')[0];
+
     const row = [
-      company.companyName,
-      company.tier ?? '',
-      company.assignedTo ?? '',
-      company.meetingCount.toString(),
-      company.lastMeetingDate ?? '',
-      company.currentPhase ?? '',
-      company.nextAction ?? '',
-      company.statusSummary ?? '',
-      company.googleDocsUrl ?? '',
-      company.riskNote ?? '',
+      company.companyName,                                          // A: 企業名
+      company.currentPhase ?? '',                                   // B: 現在フェーズ
+      company.phaseOrder?.toString() ?? '',                         // C: フェーズNo
+      company.nextAction ?? '',                                     // D: ネクストアクション
+      company.lastMeetingDate ?? '',                                // E: 最終商談日
+      '',                                                           // F: 経過日数（数式で自動計算）
+      company.meetingCount.toString(),                              // G: 商談回数
+      company.firstMeetingDate ?? '',                               // H: 初回商談日
+      company.statusSummary ?? '',                                  // I: ステータス要約
+      company.tier ?? '',                                           // J: ティア
+      company.assignedTo ?? '',                                     // K: 担当者
+      company.expectedRevenue?.toString() ?? '',                    // L: 期待収益
+      company.skuCount?.toString() ?? '',                           // M: SKU数
+      company.googleDocsUrl ?? '',                                  // N: Google Docs
+      now,                                                          // O: 最終更新
     ];
 
     const existingRow = rowMap.get(company.companyName);
 
     if (existingRow) {
       // 既存行を上書き
-      const range = `${SHEET_COMPANY}!A${existingRow}:J${existingRow}`;
+      const range = `${SHEET_COMPANY}!A${existingRow}:O${existingRow}`;
       await fetch(
-        `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`,
+        `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
         {
           method: 'PUT',
           headers: {
@@ -206,9 +220,9 @@ export async function syncCompanyToSheet(
       );
     } else {
       // 新規行を追加
-      const range = `${SHEET_COMPANY}!A:J`;
+      const range = `${SHEET_COMPANY}!A:O`;
       await fetch(
-        `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+        `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
         {
           method: 'POST',
           headers: {
@@ -220,6 +234,24 @@ export async function syncCompanyToSheet(
         },
       );
     }
+
+    // 経過日数の数式を設定（F列）
+    const targetRow = existingRow ?? (rowMap.size + 2); // 新規行の場合はmap.size + 2（ヘッダー+既存行数+1）
+    const formulaRange = `${SHEET_COMPANY}!F${targetRow}`;
+    await fetch(
+      `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(formulaRange)}?valueInputOption=USER_ENTERED`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          values: [[`=IF(E${targetRow}="","",TODAY()-DATEVALUE(E${targetRow}))`]],
+        }),
+        signal: controller.signal,
+      },
+    );
   } finally {
     clearTimeout(timeoutId);
   }
@@ -227,6 +259,7 @@ export async function syncCompanyToSheet(
 
 /**
  * 商談履歴シートに1行追加
+ * カラム: A〜I（9列）
  */
 export async function appendMeetingToSheet(
   spreadsheetId: string,
@@ -240,18 +273,20 @@ export async function appendMeetingToSheet(
     const token = await getAccessToken(controller.signal);
 
     const row = [
-      meeting.meetingDate,
-      meeting.companyName,
-      meeting.participants.join(', '),
-      meeting.source,
-      meeting.summaryExcerpt.slice(0, 200),
-      meeting.aiEstimatedCompany,
-      meeting.correctedCompany ?? '',
+      meeting.meetingDate,                                          // A: 商談日
+      meeting.companyName,                                          // B: 企業名
+      meeting.participants.join(', '),                              // C: 参加者
+      meeting.source,                                               // D: ソース
+      meeting.aiEstimatedCompany,                                   // E: AI推定企業名
+      meeting.correctedCompany ?? '',                               // F: 修正後企業名
+      meeting.approvedAt ?? new Date().toISOString().split('T')[0], // G: 承認日時
+      meeting.summaryExcerpt.slice(0, 300),                         // H: 要約（先頭300文字）
+      meeting.googleDocsUrl ?? '',                                  // I: Google Docs
     ];
 
-    const range = `${SHEET_MEETINGS}!A:G`;
+    const range = `${SHEET_MEETINGS}!A:I`;
     await fetch(
-      `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       {
         method: 'POST',
         headers: {
