@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Sheet, CheckCircle } from 'lucide-react';
 import { DealList } from '@/components/deals/deal-list';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -51,6 +51,30 @@ export default function DealsPage() {
     };
   }, [fetchDeals]);
 
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const handleSheetSync = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const res = await fetch('/api/sheets/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        const errJson: { error: string } = await res.json();
+        throw new Error(errJson.error || '同期に失敗しました');
+      }
+      const json: { data: { companyCount: number; meetingCount: number } } = await res.json();
+      setSyncMessage(`同期完了: 企業 ${json.data.companyCount}件 / 商談 ${json.data.meetingCount}件`);
+    } catch (e) {
+      setSyncMessage(e instanceof Error ? e.message : '同期に失敗しました');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const filtered = deals.filter((d) =>
     (d.company?.name ?? '').toLowerCase().includes(search.toLowerCase()),
   );
@@ -58,13 +82,33 @@ export default function DealsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-text">案件ボード</h1>
-        <div className="w-full sm:w-64">
-          <Input
-            placeholder="企業名で検索..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div>
+          <h1 className="text-xl font-semibold text-text">案件ボード</h1>
+          {syncMessage && (
+            <p className="mt-1 flex items-center gap-1.5 text-xs text-text-secondary">
+              <CheckCircle className="h-3 w-3" />
+              {syncMessage}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSheetSync}
+            loading={syncing}
+            disabled={syncing}
+          >
+            <Sheet className="h-3.5 w-3.5" />
+            {syncing ? '同期中...' : 'スプシに同期'}
+          </Button>
+          <div className="w-full sm:w-56">
+            <Input
+              placeholder="企業名で検索..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
