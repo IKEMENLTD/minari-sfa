@@ -179,7 +179,7 @@ export async function syncAllToSheet(spreadsheetId: string): Promise<SheetSyncRe
         phaseOrder,                                                          // C: フェーズNo
         (deal?.next_action as string) ?? '',                                 // D: ネクストアクション
         lastMeetingDate,                                                     // E: 最終商談日
-        lastMeetingDate ? `=IF(E${rowNum}="","",TODAY()-DATEVALUE(E${rowNum}))` : '', // F: 経過日数
+        lastMeetingDate ? `=DATEDIF(E${rowNum},TODAY(),"D")` : '', // F: 経過日数
         meetingCount.toString(),                                             // G: 商談回数
         firstDate,                                                           // H: 初回商談日
         (deal?.status_summary as string) ?? '',                              // I: ステータス要約
