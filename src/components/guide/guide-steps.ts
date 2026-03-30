@@ -50,6 +50,17 @@ export const GUIDE_STEPS: GuideStep[] = [
     mobilePosition: 'bottom',
   },
   {
+    id: 'notebooklm-link',
+    page: '/',
+    targetSelector: '[data-guide="notebooklm-link"]',
+    mobileTargetSelector: '[data-guide="mobile-menu"]',
+    title: 'NotebookLM連携',
+    description:
+      'サイドバー下部の「NotebookLM」リンクから、Googleの AI分析ツール NotebookLM をワンクリックで開けます。SALES DECKがGoogle Docsに書き出した分析レポートをNotebookLMに投入すると、AIがスライド生成や深掘り分析を行ってくれます。スマートフォンではアプリが自動で起動します。商談詳細ページでDocs書き出し後にも「NotebookLMで分析する」ボタンが表示されます。',
+    position: 'right',
+    mobilePosition: 'bottom',
+  },
+  {
     id: 'header-logout',
     page: '/',
     targetSelector: '[data-guide="logout-button"]',
