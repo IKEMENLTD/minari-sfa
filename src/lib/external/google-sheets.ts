@@ -16,11 +16,12 @@ const SHEET_MEETINGS = '商談履歴';
 const COMPANY_HEADERS = [
   '企業名', '現在フェーズ', 'フェーズNo', 'ネクストアクション', '最終商談日',
   '経過日数', '商談回数', '初回商談日', 'ステータス要約',
-  'ティア', '担当者', '期待収益', 'SKU数', '分析Doc', 'PLOUD原本', 'NotebookLM', '最終更新',
+  '分析Doc', 'PLOUD原本', 'NotebookLM',
+  'ティア', '担当者', '期待収益', 'SKU数', '最終更新',
 ];
 
 // NotebookLM列は手動入力のため、同期時に保持する列インデックス（0始まり）
-const NLM_COL_INDEX = 15; // P列
+const NLM_COL_INDEX = 11; // L列
 
 const MEETING_HEADERS = [
   '商談日', '企業名', 'ステータス', '参加者', 'ソース',
@@ -256,13 +257,13 @@ export async function syncAllToSheet(spreadsheetId: string): Promise<SheetSyncRe
         meetingCount.toString(),                                             // G: 商談回数
         firstDate,                                                           // H: 初回商談日
         (deal?.status_summary as string) ?? '',                              // I: ステータス要約
-        (company.tier as string) ?? '',                                      // J: ティア
-        (company.assigned_to as string) ?? '',                               // K: 担当者
-        (company.expected_revenue as number)?.toString() ?? '',              // L: 期待収益
-        (company.sku_count as number)?.toString() ?? '',                     // M: SKU数
-        salesDeckDocUrl,                                                     // N: 分析Doc
-        proudDocUrl,                                                         // O: PLOUD原本
-        manualNlmUrls.get(company.name as string) ?? '',                    // P: NotebookLM（手動入力を保持）
+        salesDeckDocUrl,                                                     // J: 分析Doc
+        proudDocUrl,                                                         // K: PLOUD原本
+        manualNlmUrls.get(company.name as string) ?? '',                    // L: NotebookLM（手動入力を保持）
+        (company.tier as string) ?? '',                                      // M: ティア
+        (company.assigned_to as string) ?? '',                               // N: 担当者
+        (company.expected_revenue as number)?.toString() ?? '',              // O: 期待収益
+        (company.sku_count as number)?.toString() ?? '',                     // P: SKU数
         now,                                                                 // Q: 最終更新
       ]);
     }
