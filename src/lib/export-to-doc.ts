@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { replaceDocumentContent, createDocument } from '@/lib/external/google-drive';
+import { replaceDocumentContent, createDocument, findDocumentInFolder } from '@/lib/external/google-drive';
 import { generateAnalysisReport } from '@/lib/external/claude';
 import type { AnalysisReportResult } from '@/types';
 
@@ -86,17 +86,35 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
     docId = existingDoc.doc_id as string;
     docUrl = existingDoc.doc_url as string;
   } else {
-    const docResult = await createDocument(companyName, GOOGLE_DRIVE_FOLDER_ID);
-    docId = docResult.docId;
-    docUrl = docResult.docUrl;
-    isNew = true;
+    // 自動修復: DBに記録がないがDrive上に既存Docがある場合を検索
+    const foundDoc = await findDocumentInFolder(companyName, GOOGLE_DRIVE_FOLDER_ID);
 
-    await supabase.from('google_docs').insert({
-      company_id: companyId,
-      doc_url: docUrl,
-      doc_id: docId,
-      folder: GOOGLE_DRIVE_FOLDER_ID,
-    });
+    if (foundDoc) {
+      // Drive上に既存Docを発見 → DBに登録して再利用
+      docId = foundDoc.docId;
+      docUrl = foundDoc.docUrl;
+      console.log(`自動修復: 既存Doc発見 → DBに登録 (${companyName}): ${docUrl}`);
+
+      await supabase.from('google_docs').insert({
+        company_id: companyId,
+        doc_url: docUrl,
+        doc_id: docId,
+        folder: GOOGLE_DRIVE_FOLDER_ID,
+      });
+    } else {
+      // 新規作成
+      const docResult = await createDocument(companyName, GOOGLE_DRIVE_FOLDER_ID);
+      docId = docResult.docId;
+      docUrl = docResult.docUrl;
+      isNew = true;
+
+      await supabase.from('google_docs').insert({
+        company_id: companyId,
+        doc_url: docUrl,
+        doc_id: docId,
+        folder: GOOGLE_DRIVE_FOLDER_ID,
+      });
+    }
   }
 
   // ---- 全面置換: 企業の全承認済み議事録を取得してDocを書き直す ----

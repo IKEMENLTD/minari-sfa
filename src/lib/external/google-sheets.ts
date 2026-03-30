@@ -1,6 +1,8 @@
-import { getAccessToken } from '@/lib/external/google-drive';
+import { getAccessToken, findDocumentInFolder } from '@/lib/external/google-drive';
 import { API_TIMEOUT_MS } from '@/lib/constants';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+
+const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID ?? '';
 
 // ---------------------------------------------------------------------------
 // Google Sheets API 連携 — 顧客管理スプレッドシートの自動更新
@@ -163,12 +165,31 @@ export async function syncAllToSheet(spreadsheetId: string): Promise<SheetSyncRe
       const meetingCount = meetings?.length ?? 0;
       const firstDate = (meetings?.[0]?.meeting_date as string) ?? '';
 
-      // Google Docs URL
-      const { data: doc } = await supabase
+      // Google Docs URL（自動修復: DBになければDriveを検索して登録）
+      let doc = await supabase
         .from('google_docs')
         .select('doc_url')
         .eq('company_id', companyId)
-        .single();
+        .single()
+        .then(r => r.data);
+
+      if (!doc && GOOGLE_DRIVE_FOLDER_ID && (company.name as string)) {
+        try {
+          const foundDoc = await findDocumentInFolder(company.name as string, GOOGLE_DRIVE_FOLDER_ID);
+          if (foundDoc) {
+            await supabase.from('google_docs').insert({
+              company_id: companyId,
+              doc_url: foundDoc.docUrl,
+              doc_id: foundDoc.docId,
+              folder: GOOGLE_DRIVE_FOLDER_ID,
+            });
+            doc = { doc_url: foundDoc.docUrl } as unknown as typeof doc;
+            console.log(`自動修復: ${company.name} のDoc URL をDBに登録`);
+          }
+        } catch {
+          // 修復失敗は無視
+        }
+      }
 
       const lastMeetingDate = (deal?.last_meeting_date as string) ?? '';
       const rowNum = companyRows.length + 2; // 1-indexed, ヘッダー分+1

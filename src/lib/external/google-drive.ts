@@ -189,6 +189,47 @@ export async function fetchProudNoteFiles(): Promise<ProudNoteFile[]> {
 const DOC_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
+ * Google Driveフォルダ内で企業名に一致するドキュメントを検索する（自動修復用）
+ * DBに記録がないがDrive上に既存Docがある場合のリカバリに使用
+ */
+export async function findDocumentInFolder(
+  companyName: string,
+  folderId: string,
+): Promise<{ docId: string; docUrl: string } | null> {
+  if (!DOC_ID_PATTERN.test(folderId)) return null;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    const token = await getAccessToken(controller.signal);
+    const searchName = `${companyName} - 商談議事録`;
+    const q = encodeURIComponent(`'${folderId}' in parents and name='${searchName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.document' and trashed=false`);
+
+    const res = await fetch(
+      `${GOOGLE_DRIVE_API}?q=${q}&fields=files(id,webViewLink)&pageSize=1`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      },
+    );
+
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as { files?: Array<{ id: string; webViewLink?: string }> };
+    const file = data.files?.[0];
+    if (!file) return null;
+
+    return {
+      docId: file.id,
+      docUrl: file.webViewLink ?? `https://docs.google.com/document/d/${file.id}/edit`,
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
  * Google ドキュメントにテキストを追記する
  */
 export async function appendToDocument(
