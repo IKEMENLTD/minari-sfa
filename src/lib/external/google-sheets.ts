@@ -1,4 +1,4 @@
-import { getAccessToken, findDocumentInFolder } from '@/lib/external/google-drive';
+import { getAccessToken, findCompanyFolder, findSalesDeckDoc, findProudDocInFolder } from '@/lib/external/google-drive';
 import { API_TIMEOUT_MS } from '@/lib/constants';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -16,7 +16,7 @@ const SHEET_MEETINGS = '商談履歴';
 const COMPANY_HEADERS = [
   '企業名', '現在フェーズ', 'フェーズNo', 'ネクストアクション', '最終商談日',
   '経過日数', '商談回数', '初回商談日', 'ステータス要約',
-  'ティア', '担当者', '期待収益', 'SKU数', 'Google Docs', '最終更新',
+  'ティア', '担当者', '期待収益', 'SKU数', '分析Doc', 'PLOUD原本', '最終更新',
 ];
 
 const MEETING_HEADERS = [
@@ -165,26 +165,44 @@ export async function syncAllToSheet(spreadsheetId: string): Promise<SheetSyncRe
       const meetingCount = meetings?.length ?? 0;
       const firstDate = (meetings?.[0]?.meeting_date as string) ?? '';
 
-      // Google Docs URL（自動修復: DBになければDriveを検索して登録）
-      let doc = await supabase
+      // Google Docs URL（SALES DECK分析Doc + PLOUD原本の両方を取得）
+      let salesDeckDocUrl = '';
+      let proudDocUrl = '';
+
+      // DB登録済みのSALES DECK Doc
+      const { data: docRow } = await supabase
         .from('google_docs')
         .select('doc_url')
         .eq('company_id', companyId)
-        .single()
-        .then(r => r.data);
+        .single();
 
-      if (!doc && GOOGLE_DRIVE_FOLDER_ID && (company.name as string)) {
+      if (docRow) {
+        salesDeckDocUrl = (docRow.doc_url as string) ?? '';
+      }
+
+      // Drive上のサブフォルダを検索してPLOUD原本 + 自動修復
+      if (GOOGLE_DRIVE_FOLDER_ID && (company.name as string)) {
         try {
-          const foundDoc = await findDocumentInFolder(company.name as string, GOOGLE_DRIVE_FOLDER_ID);
-          if (foundDoc) {
-            await supabase.from('google_docs').insert({
-              company_id: companyId,
-              doc_url: foundDoc.docUrl,
-              doc_id: foundDoc.docId,
-              folder: GOOGLE_DRIVE_FOLDER_ID,
-            });
-            doc = { doc_url: foundDoc.docUrl } as unknown as typeof doc;
-            console.log(`自動修復: ${company.name} のDoc URL をDBに登録`);
+          const folder = await findCompanyFolder(company.name as string, GOOGLE_DRIVE_FOLDER_ID);
+          if (folder) {
+            // PLOUD原本を検索
+            const proudDoc = await findProudDocInFolder(folder.folderId);
+            if (proudDoc) proudDocUrl = proudDoc.docUrl;
+
+            // SALES DECK DocがDBにない場合、Driveを検索して自動修復
+            if (!salesDeckDocUrl) {
+              const sdDoc = await findSalesDeckDoc(company.name as string, folder.folderId);
+              if (sdDoc) {
+                await supabase.from('google_docs').insert({
+                  company_id: companyId,
+                  doc_url: sdDoc.docUrl,
+                  doc_id: sdDoc.docId,
+                  folder: folder.folderId,
+                });
+                salesDeckDocUrl = sdDoc.docUrl;
+                console.log(`自動修復: ${company.name} のDoc URL をDBに登録`);
+              }
+            }
           }
         } catch {
           // 修復失敗は無視
@@ -208,8 +226,9 @@ export async function syncAllToSheet(spreadsheetId: string): Promise<SheetSyncRe
         (company.assigned_to as string) ?? '',                               // K: 担当者
         (company.expected_revenue as number)?.toString() ?? '',              // L: 期待収益
         (company.sku_count as number)?.toString() ?? '',                     // M: SKU数
-        (doc?.doc_url as string) ?? '',                                      // N: Google Docs
-        now,                                                                 // O: 最終更新
+        salesDeckDocUrl,                                                     // N: 分析Doc
+        proudDocUrl,                                                         // O: PLOUD原本
+        now,                                                                 // P: 最終更新
       ]);
     }
 

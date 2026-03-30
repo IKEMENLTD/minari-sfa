@@ -189,10 +189,86 @@ export async function fetchProudNoteFiles(): Promise<ProudNoteFile[]> {
 const DOC_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
- * Google Driveフォルダ内で企業名に一致するドキュメントを検索する（自動修復用）
- * DBに記録がないがDrive上に既存Docがある場合のリカバリに使用
+ * 企業名に一致するサブフォルダを検索する
  */
-export async function findDocumentInFolder(
+export async function findCompanyFolder(
+  companyName: string,
+  parentFolderId: string,
+): Promise<{ folderId: string; folderName: string } | null> {
+  if (!DOC_ID_PATTERN.test(parentFolderId)) return null;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    const token = await getAccessToken(controller.signal);
+    // 企業名を含むフォルダを検索（完全一致 or 部分一致）
+    const q = encodeURIComponent(
+      `'${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+    );
+    const res = await fetch(
+      `${GOOGLE_DRIVE_API}?q=${q}&fields=files(id,name)&pageSize=100`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal },
+    );
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as { files?: Array<{ id: string; name: string }> };
+    if (!data.files?.length) return null;
+
+    // 完全一致 → 部分一致（企業名がフォルダ名に含まれる or フォルダ名が企業名に含まれる）
+    const exact = data.files.find((f) => f.name === companyName);
+    if (exact) return { folderId: exact.id, folderName: exact.name };
+
+    const partial = data.files.find(
+      (f) => companyName.includes(f.name) || f.name.includes(companyName)
+    );
+    if (partial) return { folderId: partial.id, folderName: partial.name };
+
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * サブフォルダを新規作成する
+ */
+export async function createFolder(
+  folderName: string,
+  parentFolderId: string,
+): Promise<string> {
+  if (!DOC_ID_PATTERN.test(parentFolderId)) {
+    throw new Error('無効な親フォルダ ID です');
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    const token = await getAccessToken(controller.signal);
+    const res = await fetch(GOOGLE_DRIVE_API, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [parentFolderId],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) throw new Error(`フォルダ作成エラー (${res.status})`);
+    const data = (await res.json()) as { id: string };
+    return data.id;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * フォルダ内でSALES DECK Docを検索する（「企業名 - 商談議事録」命名規則）
+ */
+export async function findSalesDeckDoc(
   companyName: string,
   folderId: string,
 ): Promise<{ docId: string; docUrl: string } | null> {
@@ -204,16 +280,13 @@ export async function findDocumentInFolder(
   try {
     const token = await getAccessToken(controller.signal);
     const searchName = `${companyName} - 商談議事録`;
-    const q = encodeURIComponent(`'${folderId}' in parents and name='${searchName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.document' and trashed=false`);
-
+    const q = encodeURIComponent(
+      `'${folderId}' in parents and name='${searchName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.document' and trashed=false`
+    );
     const res = await fetch(
       `${GOOGLE_DRIVE_API}?q=${q}&fields=files(id,webViewLink)&pageSize=1`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: controller.signal,
-      },
+      { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal },
     );
-
     if (!res.ok) return null;
 
     const data = (await res.json()) as { files?: Array<{ id: string; webViewLink?: string }> };
@@ -227,6 +300,60 @@ export async function findDocumentInFolder(
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * フォルダ内のPLOUDノート原本ドキュメントを検索する（タイムスタンプ付きファイル名）
+ */
+export async function findProudDocInFolder(
+  folderId: string,
+): Promise<{ docId: string; docUrl: string; title: string } | null> {
+  if (!DOC_ID_PATTERN.test(folderId)) return null;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    const token = await getAccessToken(controller.signal);
+    const q = encodeURIComponent(
+      `'${folderId}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false`
+    );
+    const res = await fetch(
+      `${GOOGLE_DRIVE_API}?q=${q}&fields=files(id,name,webViewLink)&orderBy=modifiedTime desc&pageSize=1`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal },
+    );
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as { files?: Array<{ id: string; name: string; webViewLink?: string }> };
+    const file = data.files?.[0];
+    if (!file) return null;
+
+    return {
+      docId: file.id,
+      docUrl: file.webViewLink ?? `https://docs.google.com/document/d/${file.id}/edit`,
+      title: file.name,
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// 後方互換: findDocumentInFolder は findSalesDeckDoc + サブフォルダ検索のラッパー
+export async function findDocumentInFolder(
+  companyName: string,
+  parentFolderId: string,
+): Promise<{ docId: string; docUrl: string } | null> {
+  // まず親フォルダ直下を検索（旧フラット構造）
+  const flat = await findSalesDeckDoc(companyName, parentFolderId);
+  if (flat) return flat;
+
+  // サブフォルダ内を検索
+  const folder = await findCompanyFolder(companyName, parentFolderId);
+  if (folder) {
+    return findSalesDeckDoc(companyName, folder.folderId);
+  }
+
+  return null;
 }
 
 /**
