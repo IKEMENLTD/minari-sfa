@@ -13,6 +13,56 @@ const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID ?? '';
 // ---------------------------------------------------------------------------
 
 /**
+ * 既存Docの有無を確認する（上書き確認ポップアップ用）
+ */
+export async function checkExistingDoc(meetingId: string): Promise<{
+  exists: boolean;
+  docUrl: string | null;
+  companyName: string | null;
+}> {
+  const supabase = createServerSupabaseClient();
+
+  const { data: meeting } = await supabase
+    .from('meetings')
+    .select('company_id, ai_estimated_company')
+    .eq('id', meetingId)
+    .single();
+
+  if (!meeting) {
+    return { exists: false, docUrl: null, companyName: null };
+  }
+
+  let companyName = meeting.ai_estimated_company as string || '';
+  const companyId = meeting.company_id as string | null;
+
+  if (companyId) {
+    const { data: company } = await supabase
+      .from('companies')
+      .select('name')
+      .eq('id', companyId)
+      .single();
+    if (company) companyName = company.name as string;
+
+    const { data: existingDoc } = await supabase
+      .from('google_docs')
+      .select('doc_url')
+      .eq('company_id', companyId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingDoc) {
+      return {
+        exists: true,
+        docUrl: existingDoc.doc_url as string,
+        companyName,
+      };
+    }
+  }
+
+  return { exists: false, docUrl: null, companyName };
+}
+
+/**
  * 議事録のみをGoogle Docsに書き出す（同期処理）
  * - 企業の全承認済み議事録を取得し、Docを丸ごと書き直す
  * - 分析レポートは含めない（cronで別途生成）

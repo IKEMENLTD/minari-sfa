@@ -37,6 +37,22 @@ function MeetingDetailView({ meeting, onResummarize }: MeetingDetailProps) {
     setExporting(true);
     setExportMessage(null);
     try {
+      // 既存Docの有無を確認
+      const checkRes = await fetch(`/api/meetings/${meeting.id}/export-doc`);
+      if (checkRes.ok) {
+        const checkJson: { data: { exists: boolean; docUrl: string | null; companyName: string | null } } = await checkRes.json();
+        if (checkJson.data.exists) {
+          const confirmed = window.confirm(
+            `「${checkJson.data.companyName ?? '不明'}」のGoogle Docsは既に存在します。\n最新の議事録で上書きしますか？`
+          );
+          if (!confirmed) {
+            setExporting(false);
+            return;
+          }
+        }
+      }
+
+      // 書き出し実行
       const res = await fetch(`/api/meetings/${meeting.id}/export-doc`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -49,7 +65,7 @@ function MeetingDetailView({ meeting, onResummarize }: MeetingDetailProps) {
       setExportMessage(
         json.data.isNew
           ? `新規作成しました → ${json.data.docUrl}`
-          : `更新しました（分析レポート再生成済み） → ${json.data.docUrl}`
+          : `上書き更新しました → ${json.data.docUrl}`
       );
     } catch (e) {
       setExportMessage(e instanceof Error ? e.message : '書き出しに失敗しました');
