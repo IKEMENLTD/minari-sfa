@@ -3,7 +3,7 @@ import {
   replaceDocumentWithHeadings, createDocument,
   findCompanyFolder, createFolder, findSalesDeckDoc,
 } from '@/lib/external/google-drive';
-import { generateAnalysisReport } from '@/lib/external/claude';
+import { generateAnalysisReport, summarizeMeeting } from '@/lib/external/claude';
 import type { AnalysisReportResult } from '@/types';
 
 const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID ?? '';
@@ -332,7 +332,17 @@ interface MeetingSection {
 }
 
 /**
- * 企業の全承認済み議事録セクションを構築する（要約なしの商談はスキップ）
+ * 旧フォーマット（■ セクション見出し）の要約を検知する
+ * 新フォーマットは【】で囲んだ見出しを使用
+ */
+function isLegacySummary(summaryText: string): boolean {
+  return summaryText.includes('■ ') && !summaryText.includes('【');
+}
+
+/**
+ * 企業の全承認済み議事録セクションを構築する
+ * - 要約なしの商談はスキップ
+ * - 旧フォーマットの要約は自動で再生成（最大3件/回）
  */
 async function buildMeetingSections(
   supabase: ReturnType<typeof createServerSupabaseClient>,
@@ -360,11 +370,56 @@ async function buildMeetingSections(
     summaryMap.set(s.meeting_id as string, s.summary_text as string);
   }
 
+  // 旧フォーマットの要約を自動再生成（最大3件/回、タイムアウト対策）
+  let regenerated = 0;
+  const MAX_REGEN_PER_RUN = 3;
+  for (const m of allMeetings) {
+    const existingText = summaryMap.get(m.id as string) ?? '';
+    if (!existingText || !isLegacySummary(existingText)) continue;
+    if (regenerated >= MAX_REGEN_PER_RUN) break;
+
+    try {
+      const { data: transcript } = await supabase
+        .from('transcripts')
+        .select('full_text')
+        .eq('meeting_id', m.id as string)
+        .single();
+
+      if (!transcript?.full_text) continue;
+
+      console.log(`旧フォーマット要約を再生成中: meeting=${m.id}`);
+      const analysis = await summarizeMeeting(transcript.full_text as string);
+
+      await supabase
+        .from('summaries')
+        .update({ summary_text: analysis.summary, model_used: 'claude-sonnet-4-20250514' })
+        .eq('meeting_id', m.id as string);
+
+      summaryMap.set(m.id as string, analysis.summary);
+
+      // participants/ai_estimated_companyも更新
+      await supabase
+        .from('meetings')
+        .update({
+          participants: analysis.participants,
+          ai_estimated_company: analysis.estimatedCompany,
+        })
+        .eq('id', m.id as string);
+
+      regenerated++;
+    } catch (err) {
+      console.error(`要約再生成に失敗 (meeting=${m.id}):`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  if (regenerated > 0) {
+    console.log(`旧フォーマット要約を${regenerated}件再生成しました`);
+  }
+
   const sections: MeetingSection[] = [];
   let index = 1;
   for (const m of allMeetings) {
     const summaryText = summaryMap.get(m.id as string) ?? '';
-    // 要約なしの商談はスキップ
     if (!summaryText) continue;
 
     sections.push({
