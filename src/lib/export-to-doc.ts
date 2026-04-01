@@ -125,7 +125,7 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
       docUrl = foundDoc.docUrl;
       console.log(`自動修復: 既存Doc発見 → DBに登録 (${companyName}): ${docUrl}`);
     } else {
-      // サブフォルダ内に新規作成（権限不足なら親フォルダで再試行）
+      // サブフォルダ内に新規作成（権限不足なら親フォルダで再試行、容量超過は即エラー）
       try {
         const docResult = await createDocument(companyName, companyFolderId);
         docId = docResult.docId;
@@ -133,6 +133,9 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
         isNew = true;
       } catch (createErr) {
         const msg = createErr instanceof Error ? createErr.message : '';
+        if (msg.includes('storageQuotaExceeded') || msg.includes('storage quota')) {
+          throw new Error('Google Driveの容量が上限に達しています。サービスアカウントのDrive内の不要ファイルを削除してください。');
+        }
         if (msg.includes('403')) {
           console.warn(`サブフォルダへの書き込み権限なし → 親フォルダで再試行 (${companyName})`);
           const docResult = await createDocument(companyName, GOOGLE_DRIVE_FOLDER_ID);

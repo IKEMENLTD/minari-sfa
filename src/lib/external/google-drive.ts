@@ -271,6 +271,7 @@ export async function createFolder(
 
 /**
  * フォルダ内でSALES DECK Docを検索する（「企業名 - 商談議事録」命名規則）
+ * 完全一致 → 「商談議事録」を含むDoc → フォルダ内の任意のDoc の順で検索
  */
 export async function findSalesDeckDoc(
   companyName: string,
@@ -283,24 +284,53 @@ export async function findSalesDeckDoc(
 
   try {
     const token = await getAccessToken(controller.signal);
+
+    // 1. 完全一致で検索
     const searchName = `${companyName} - 商談議事録`;
-    const q = encodeURIComponent(
+    const exactQ = encodeURIComponent(
       `'${folderId}' in parents and name='${searchName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.document' and trashed=false`
     );
-    const res = await fetch(
-      `${GOOGLE_DRIVE_API}?q=${q}&fields=files(id,webViewLink)&pageSize=1`,
+    const exactRes = await fetch(
+      `${GOOGLE_DRIVE_API}?q=${exactQ}&fields=files(id,name,webViewLink)&pageSize=1`,
       { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal },
     );
-    if (!res.ok) return null;
+    if (exactRes.ok) {
+      const exactData = (await exactRes.json()) as { files?: Array<{ id: string; name: string; webViewLink?: string }> };
+      const exactFile = exactData.files?.[0];
+      if (exactFile) {
+        return {
+          docId: exactFile.id,
+          docUrl: exactFile.webViewLink ?? `https://docs.google.com/document/d/${exactFile.id}/edit`,
+        };
+      }
+    }
 
-    const data = (await res.json()) as { files?: Array<{ id: string; webViewLink?: string }> };
-    const file = data.files?.[0];
-    if (!file) return null;
+    // 2. フォルダ内の全Docを取得し、「商談議事録」を含むものを部分一致で検索
+    const allQ = encodeURIComponent(
+      `'${folderId}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false`
+    );
+    const allRes = await fetch(
+      `${GOOGLE_DRIVE_API}?q=${allQ}&fields=files(id,name,webViewLink)&pageSize=10`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal },
+    );
+    if (!allRes.ok) return null;
 
-    return {
-      docId: file.id,
-      docUrl: file.webViewLink ?? `https://docs.google.com/document/d/${file.id}/edit`,
-    };
+    const allData = (await allRes.json()) as { files?: Array<{ id: string; name: string; webViewLink?: string }> };
+    if (!allData.files?.length) return null;
+
+    // 「商談議事録」を含むDoc優先、なければフォルダ内の最初のDoc
+    const gisrokuDoc = allData.files.find((f) => f.name.includes('商談議事録'));
+    const matchedFile = gisrokuDoc ?? allData.files[0];
+
+    if (matchedFile) {
+      console.log(`Doc部分一致で発見: "${matchedFile.name}" (検索名: "${searchName}")`);
+      return {
+        docId: matchedFile.id,
+        docUrl: matchedFile.webViewLink ?? `https://docs.google.com/document/d/${matchedFile.id}/edit`,
+      };
+    }
+
+    return null;
   } finally {
     clearTimeout(timeoutId);
   }
