@@ -8,28 +8,32 @@ import type { AnalysisReportResult } from '@/types';
 
 const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID ?? '';
 
+/** 分析レポート生成の専用タイムアウト（Renderの30秒制限対策） */
+const ANALYSIS_TIMEOUT_MS = 15_000;
+
 /**
  * 企業のGoogle Docsを全面置換する
  * - 企業の全承認済み議事録を取得し、Docを丸ごと書き直す
  * - 再生成しても重複しない（毎回全件で上書き）
  * - 新規企業はDoc自動作成、既存企業は既存Docを上書き
  */
-export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: string; isNew: boolean } | null> {
+export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: string; isNew: boolean }> {
   if (!GOOGLE_DRIVE_FOLDER_ID) {
-    console.error('GOOGLE_DRIVE_FOLDER_ID が未設定のためGoogle Docs書き出しをスキップ');
-    return null;
+    throw new Error('環境変数 GOOGLE_DRIVE_FOLDER_ID が未設定です');
   }
 
   const supabase = createServerSupabaseClient();
 
   // 対象の商談データ取得
-  const { data: meeting } = await supabase
+  const { data: meeting, error: meetingError } = await supabase
     .from('meetings')
     .select('id, company_id, ai_estimated_company')
     .eq('id', meetingId)
     .single();
 
-  if (!meeting) return null;
+  if (meetingError || !meeting) {
+    throw new Error(`商談データが見つかりません (id=${meetingId}): ${meetingError?.message ?? '該当なし'}`);
+  }
 
   // 企業名・IDを決定
   let companyName = meeting.ai_estimated_company as string || '';
@@ -44,7 +48,12 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
     if (company) companyName = company.name as string;
   }
 
-  if (!companyName || companyName === '(社内)') return null;
+  if (!companyName) {
+    throw new Error('企業名が未設定です（ai_estimated_company が空）');
+  }
+  if (companyName === '(社内)') {
+    throw new Error('社内会議のためGoogle Docs書き出し対象外です');
+  }
 
   // 企業がなければ検索・作成
   if (!companyId) {
@@ -58,11 +67,14 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
     if (existingCompany) {
       companyId = existingCompany.id as string;
     } else {
-      const { data: newCompany } = await supabase
+      const { data: newCompany, error: insertErr } = await supabase
         .from('companies')
         .insert({ name: companyName })
         .select('id')
         .single();
+      if (insertErr) {
+        throw new Error(`企業レコード作成に失敗: ${insertErr.message}`);
+      }
       companyId = newCompany?.id as string | null;
     }
 
@@ -71,7 +83,9 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
     }
   }
 
-  if (!companyId) return null;
+  if (!companyId) {
+    throw new Error('企業IDの取得・作成に失敗しました');
+  }
 
   // Google Doc を検索 or 作成
   let docId: string;
@@ -111,19 +125,36 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
       docUrl = foundDoc.docUrl;
       console.log(`自動修復: 既存Doc発見 → DBに登録 (${companyName}): ${docUrl}`);
     } else {
-      // サブフォルダ内に新規作成
-      const docResult = await createDocument(companyName, companyFolderId);
-      docId = docResult.docId;
-      docUrl = docResult.docUrl;
-      isNew = true;
+      // サブフォルダ内に新規作成（権限不足なら親フォルダで再試行）
+      try {
+        const docResult = await createDocument(companyName, companyFolderId);
+        docId = docResult.docId;
+        docUrl = docResult.docUrl;
+        isNew = true;
+      } catch (createErr) {
+        const msg = createErr instanceof Error ? createErr.message : '';
+        if (msg.includes('403')) {
+          console.warn(`サブフォルダへの書き込み権限なし → 親フォルダで再試行 (${companyName})`);
+          const docResult = await createDocument(companyName, GOOGLE_DRIVE_FOLDER_ID);
+          docId = docResult.docId;
+          docUrl = docResult.docUrl;
+          isNew = true;
+          companyFolderId = GOOGLE_DRIVE_FOLDER_ID;
+        } else {
+          throw createErr;
+        }
+      }
     }
 
-    await supabase.from('google_docs').insert({
+    const { error: docInsertErr } = await supabase.from('google_docs').insert({
       company_id: companyId,
       doc_url: docUrl,
       doc_id: docId,
       folder: companyFolderId,
     });
+    if (docInsertErr) {
+      console.error('google_docs登録エラー:', docInsertErr.message);
+    }
   }
 
   // ---- 全面置換: 企業の全承認済み議事録を取得してDocを書き直す ----
@@ -152,10 +183,12 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
 
   // 各議事録のセクションを生成
   const meetingIds = allMeetings.map((m) => m.id as string);
-  const { data: summaries } = await supabase
-    .from('summaries')
-    .select('meeting_id, summary_text')
-    .in('meeting_id', meetingIds);
+  const { data: summaries } = meetingIds.length > 0
+    ? await supabase
+        .from('summaries')
+        .select('meeting_id, summary_text')
+        .in('meeting_id', meetingIds)
+    : { data: [] };
 
   const summaryMap = new Map<string, string>();
   for (const s of summaries ?? []) {
@@ -180,7 +213,8 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
 // ---- ヘルパー関数 ----
 
 /**
- * 分析レポート生成（失敗時はnullを返し、議事録書き出しを妨げない）
+ * 分析レポート生成（失敗・タイムアウト時はnullを返し、議事録書き出しを妨げない）
+ * Renderの30秒リクエスト制限対策として、分析は専用の短いタイムアウトで実行する
  */
 async function generateAnalysisReportSafe(
   companyName: string,
@@ -189,7 +223,16 @@ async function generateAnalysisReportSafe(
   if (summaryTexts.length === 0) return null;
 
   try {
-    return await generateAnalysisReport(companyName, summaryTexts);
+    const result = await Promise.race([
+      generateAnalysisReport(companyName, summaryTexts),
+      new Promise<null>((resolve) =>
+        setTimeout(() => {
+          console.warn(`分析レポート生成がタイムアウト (${ANALYSIS_TIMEOUT_MS}ms) — スキップして議事録書き出しを継続`);
+          resolve(null);
+        }, ANALYSIS_TIMEOUT_MS)
+      ),
+    ]);
+    return result;
   } catch (err) {
     console.error('分析レポート生成に失敗しました（議事録書き出しは継続）:', err instanceof Error ? err.message : err);
     return null;

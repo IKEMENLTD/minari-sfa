@@ -28,21 +28,16 @@ export async function POST(
     }
 
     const result = await exportMeetingToDoc(id);
-
-    if (!result) {
-      return NextResponse.json(
-        { data: null, error: 'Google Docsへの書き出しに失敗しました（企業名不明または環境変数未設定）' },
-        { status: 500 }
-      );
-    }
-
     return NextResponse.json({ data: result, error: null });
   } catch (err) {
     const msg = err instanceof Error ? err.message : '不明なエラー';
     console.error('Google Docs書き出しエラー:', msg);
+
+    // クライアント判断可能なステータスコードを振り分け
+    const is4xx = msg.includes('企業名が未設定') || msg.includes('社内会議') || msg.includes('商談データが見つかりません');
     return NextResponse.json(
       { data: null, error: `Google Docs書き出し失敗: ${msg}` },
-      { status: 500 }
+      { status: is4xx ? 400 : 500 }
     );
   }
 }

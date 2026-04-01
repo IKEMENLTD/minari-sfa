@@ -257,7 +257,11 @@ export async function createFolder(
       signal: controller.signal,
     });
 
-    if (!res.ok) throw new Error(`フォルダ作成エラー (${res.status})`);
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`フォルダ作成エラー詳細 (${res.status}):`, errBody);
+      throw new Error(`フォルダ作成エラー (${res.status}): ${errBody.slice(0, 200)}`);
+    }
     const data = (await res.json()) as { id: string };
     return data.id;
   } finally {
@@ -428,7 +432,9 @@ export async function replaceDocumentContent(
     });
 
     if (!getRes.ok) {
-      throw new Error(`Google Docs API 取得エラー (${getRes.status})`);
+      const errBody = await getRes.text();
+      console.error(`Google Docs 取得エラー詳細 (${getRes.status}):`, errBody);
+      throw new Error(`Google Docs API 取得エラー (${getRes.status}): ${errBody.slice(0, 200)}`);
     }
 
     const docData = (await getRes.json()) as {
@@ -512,7 +518,9 @@ export async function createDocument(
     });
 
     if (!response.ok) {
-      throw new Error(`Google Drive API ドキュメント作成エラー (${response.status})`);
+      const errBody = await response.text();
+      console.error(`Google Drive ドキュメント作成エラー詳細 (${response.status}):`, errBody);
+      throw new Error(`Google Drive API ドキュメント作成エラー (${response.status}): ${errBody.slice(0, 200)}`);
     }
 
     const data = (await response.json()) as { id: string; webViewLink: string };
