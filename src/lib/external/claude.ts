@@ -20,15 +20,18 @@ const salesPhaseJudgmentSchema = z.object({
   statusSummary: z.string(),
 }).strict();
 
+/** Claude APIが文字列または配列で返す場合があるため、配列は改行結合で文字列化する */
+const flexString = z.union([z.string(), z.array(z.string()).transform((arr) => arr.join('\n'))]);
+
 const analysisReportSchema = z.object({
-  executiveSummary: z.string(),
-  keyInsights: z.string(),
-  challengesAndNeeds: z.string(),
-  timeline: z.string(),
-  competitiveAnalysis: z.string(),
-  riskAssessment: z.string(),
-  recommendedActions: z.string(),
-}).strict();
+  executiveSummary: flexString,
+  keyInsights: flexString,
+  challengesAndNeeds: flexString,
+  timeline: flexString,
+  competitiveAnalysis: flexString,
+  riskAssessment: flexString,
+  recommendedActions: flexString,
+});
 
 // ---------------------------------------------------------------------------
 // Claude API 連携
