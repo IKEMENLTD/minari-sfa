@@ -25,7 +25,7 @@ const analysisReportSchema = z.object({
   keyInsights: z.string(),
   challengesAndNeeds: z.string(),
   timeline: z.string(),
-  faq: z.string(),
+  competitiveAnalysis: z.string(),
   riskAssessment: z.string(),
   recommendedActions: z.string(),
 }).strict();
@@ -47,6 +47,12 @@ interface ClaudeResponse {
   content: Array<{ type: string; text: string }>;
 }
 
+interface ClaudeOptions {
+  model?: string;
+  maxTokens?: number;
+  temperature?: number;
+}
+
 /**
  * Claude API にリクエストを送信する
  */
@@ -54,7 +60,7 @@ async function callClaude(
   messages: ClaudeMessage[],
   systemPrompt: string,
   signal: AbortSignal,
-  options?: { model?: string; maxTokens?: number }
+  options?: ClaudeOptions
 ): Promise<string> {
   const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey) {
@@ -71,6 +77,7 @@ async function callClaude(
     body: JSON.stringify({
       model: options?.model ?? CLAUDE_SONNET,
       max_tokens: options?.maxTokens ?? 16384,
+      temperature: options?.temperature ?? 1,
       system: systemPrompt,
       messages,
     }),
@@ -111,82 +118,65 @@ export async function summarizeMeeting(
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   try {
-    const systemPrompt = `あなたはSaaS営業チームの商談議事録から、完全な議事録レポートを作成する専門アシスタントです。
-この要約は後工程でNotebookLMに投入してスライド生成に使用されます。情報の欠落は許されません。
+    const systemPrompt = `あなたは法人営業の議事録作成専門AIです。
+この要約は後工程でNotebookLMに投入してスライド生成に使用されます。
 
-## summaryフィールドの書き方（最重要）
+## summaryフィールドの書き方
 
-### 原則
-- 議事録の内容を**一切省略せず**、構造化された詳細レポートとして出力すること
-- 文字数の目安: 元の議事録の30〜50%程度。短い会議でも最低1000文字、長い会議は10000文字以上でもOK
-- 第三者がこのレポートだけで商談の全貌を把握できるレベルの詳細さが必要
+### セクション構成（この順序で必ず記述）
+各セクション見出しは【】で囲んでください。情報がない場合は「情報なし」と明記。
 
-### 必須セクション（この順序で必ず書くこと）
+【商談概要】
+- 日時、参加者（全員のフルネームと所属）、会議の目的
 
-**■ 商談概要**
-- 日時、参加者（全員のフルネームと所属）、会議の目的・アジェンダ
+【顧客の現状と課題】
+- 現在の業務フロー、使用中のツール
+- 具体的な課題（数値を含む：SKU数、作業時間、コスト等）
 
-**■ 顧客の現状と課題**
-- 現在の業務フロー、使用中のツール・システム
-- 具体的な課題・痛み（数値を含む：SKU数、作業時間、コスト等）
-- 過去の取り組み・失敗した施策があれば
-
-**■ 議論の詳細**
+【議論の詳細】
 - 誰が何を発言したか、重要な発言は「」で直接引用
 - 質疑応答の内容を漏れなく記載
-- 提案した製品・サービスの具体的な説明内容
-- デモやPoCの内容があれば詳細に
+- 提案内容の具体的な説明
 
-**■ 商談の温度感・反応**
-- 顧客のキーパーソンの反応（前向き/懸念/保留など）
-- 具体的な懸念事項や反対意見
-- 競合他社の状況（名前、利用中のサービス、乗り換え検討理由）
+【商談の温度感・反応】
+- 顧客キーパーソンの反応（前向き/懸念/保留）
+- 具体的な懸念事項、競合他社の状況
 
-**■ 金額・条件**
-- 提示した金額、単価、見積条件
-- 顧客の予算感、値引き交渉の有無
-- 契約形態（月額/年額）、契約期間
+【金額・条件】
+- 提示金額、単価、見積条件、予算感
+- 情報がなければ「金額に関する議論なし」
 
-**■ ネクストアクション**
-- 合意した次のステップ（全て列挙）
-- 各アクションの担当者と期日
-- 次回ミーティングの予定日時
-- 宿題事項（自社側・顧客側それぞれ）
+【ネクストアクション】
+- 合意した次のステップ（担当者と期日を含む）
+- 宿題事項（自社側・顧客側）
 
-**■ タイムライン・ロードマップ**
-- 導入までのスケジュール感
-- PoC/トライアル期間
-- 本番稼働予定時期
-
-**■ 補足・特記事項**
-- 競合情報、業界特有の事情
-- 社内共有すべき重要な気づき
-- リスク要因
+【補足・特記事項】
+- 競合情報、業界事情、リスク要因
 
 ### 文体
-- ですます調で丁寧に
-- 段落を適切に分けて読みやすく
-- 固有名詞（企業名、製品名、人名、部署名）は正確に記載
-- 金額・数量・期日・パーセンテージなどの数値は一つも漏らさない
+- ですます調
+- 固有名詞は正確に記載
+- 数値は一つも漏らさない
+- 1セクション400文字以内を目安に、重要な情報は漏らさない
 
 ## participantsフィールド
-- 「名前（所属）」の形式（例: "田中（ラズリ）"）
+- 「名前（所属）」の形式
 - 議事録に登場する全員を記載
-- 所属が不明な場合は名前のみ
 
 ## 回答形式
-以下のJSON形式のみ出力してください（マークダウンのコードブロックで囲まないこと）:
+以下のJSON形式のみ出力（コードブロックで囲まないこと）:
 {
-  "summary": "詳細な議事録レポート",
-  "estimatedCompany": "商談相手の企業名（社内会議の場合は '(社内)'）",
-  "participants": ["名前（所属）", "名前（所属）"],
+  "summary": "...",
+  "estimatedCompany": "...",
+  "participants": [...],
   "isInternal": false
 }`;
 
     const result = await callClaude(
       [{ role: 'user', content: `以下の議事録を分析してください:\n\n${transcript}` }],
       systemPrompt,
-      controller.signal
+      controller.signal,
+      { temperature: 0 }
     );
 
     const rawParsed: unknown = JSON.parse(result);
@@ -229,7 +219,7 @@ ${phaseList}
       [{ role: 'user', content: `以下の商談履歴からフェーズを判定してください:\n\n${meetingsSummary}` }],
       systemPrompt,
       controller.signal,
-      { model: CLAUDE_HAIKU, maxTokens: 1024 }
+      { model: CLAUDE_HAIKU, maxTokens: 1024, temperature: 0 }
     );
 
     const rawParsed: unknown = JSON.parse(result);
@@ -246,42 +236,45 @@ ${phaseList}
  */
 export async function generateAnalysisReport(
   companyName: string,
-  companyMeetings: string[]
+  companyMeetings: Array<{ date: string; text: string }>
 ): Promise<AnalysisReportResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   try {
-    const systemPrompt = `あなたは SaaS 営業のインテリジェンスアナリストです。
-企業との全商談履歴を分析し、営業戦略に直結する包括的な分析レポートを作成してください。
+    const systemPrompt = `あなたは法人営業の戦略分析AIです。
+企業との全商談履歴を分析し、スライド生成に最適化された分析レポートを作成してください。
+
+## 入力
+複数の商談要約が時系列順に提供されます。各要約には商談日が付与されています。
 
 ## 出力ルール
-- 各セクションは **そのまま Google Docs に掲載される** ため、読みやすい文章で書くこと
-- 箇条書き・番号付きリストを活用して構造化すること
-- 具体的な数値・固有名詞・日付は一つも漏らさないこと
-- 推測には必ず「（推測）」と明記すること
-- 1商談しかない場合でも、得られる情報から最大限の分析を行うこと
+- 体言止めで記述（スライド転記を前提）
+- 箇条書き・番号付きリストを活用
+- 具体的な数値・固有名詞・日付は漏らさない
+- 推測には「（推定）」と明記
+- 1セクション400文字以内
 
 ## 回答形式（JSON のみ出力。マークダウンのコードブロックで囲まないこと）
 {
-  "executiveSummary": "全体像を3〜5文で要約。企業の規模感、商談の進捗度合い、受注確度の印象を含める",
-  "keyInsights": "商談から読み取れる重要な洞察を箇条書きで5〜10項目。顧客の意思決定パターン、キーパーソンの態度変化、競合との差別化ポイントなど",
-  "challengesAndNeeds": "顧客が抱える課題とニーズを構造化して記述。【課題名】: 詳細説明 の形式で。優先度が高い順に並べる",
-  "timeline": "全商談を時系列で整理。各商談の日付、主要議題、進展した点、停滞した点を簡潔にまとめる",
-  "faq": "この案件について社内で聞かれそうな質問と回答を5〜8組。Q: ... A: ... の形式",
-  "riskAssessment": "失注リスク・遅延リスク・競合リスクを具体的に列挙。各リスクに対する根拠と影響度（高/中/低）を明記",
-  "recommendedActions": "今すぐやるべきアクションを優先度順に列挙。各アクションに【期限目安】と【担当】を付与"
+  "executiveSummary": "案件全体の現状を200-400字で要約。受注確度、進捗度合い、重要判断ポイントを含む",
+  "keyInsights": "商談から読み取れる重要な洞察を箇条書きで5-7項目。各項目に根拠を付与",
+  "challengesAndNeeds": "顧客の課題とニーズを優先度順に構造化。【課題名】: 詳細 の形式",
+  "timeline": "全商談を時系列で整理。各商談の日付、主要議題、進展・停滞を簡潔に",
+  "competitiveAnalysis": "判明している競合情報を整理。競合名、強み・弱み、自社との差別化ポイント。情報がなければ「競合情報なし -- 次回ヒアリング推奨」",
+  "riskAssessment": "失注・遅延・競合リスクを列挙。各リスクに影響度（高=受注に直結/中=スケジュール影響/低=対処可能）と根拠を明記",
+  "recommendedActions": "次に取るべき行動を優先度順に3-5項目。【優先度: 高/中/低】アクション → 期限目安"
 }`;
 
     const meetingsSummary = companyMeetings
-      .map((m, i) => `--- 商談${i + 1} ---\n${m}`)
+      .map((m, i) => `--- 商談${i + 1}（${m.date}） ---\n${m.text}`)
       .join('\n\n');
 
     const result = await callClaude(
       [{ role: 'user', content: `以下は「${companyName}」との全商談履歴です。包括的な分析レポートを作成してください:\n\n${meetingsSummary}` }],
       systemPrompt,
       controller.signal,
-      { maxTokens: 16384 }
+      { maxTokens: 16384, temperature: 0 }
     );
 
     const rawParsed: unknown = JSON.parse(result);

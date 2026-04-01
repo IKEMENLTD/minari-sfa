@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { fetchProudNoteFiles } from '@/lib/external/google-drive';
 import { fetchNewTranscripts } from '@/lib/external/jamroll';
 import { summarizeMeeting } from '@/lib/external/claude';
+import { exportAnalysisToDoc } from '@/lib/export-to-doc';
 
 // ---------------------------------------------------------------------------
 // GET /api/cron/process - 定期自動処理（cron用）
@@ -147,8 +148,29 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     errors.push(`Jamroll: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // 3. 分析レポート生成（Google Docsに書き出し済みの企業を対象）
+  const analysisResults: string[] = [];
+  try {
+    const { data: docsToAnalyze } = await supabase
+      .from('google_docs')
+      .select('company_id')
+      .limit(5);
+
+    for (const doc of docsToAnalyze ?? []) {
+      try {
+        await exportAnalysisToDoc(doc.company_id as string);
+        analysisResults.push(doc.company_id as string);
+      } catch (analysisErr) {
+        errors.push(`分析レポート (${doc.company_id}): ${analysisErr instanceof Error ? analysisErr.message : String(analysisErr)}`);
+      }
+    }
+  } catch (err) {
+    errors.push(`分析レポート一括処理: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   return NextResponse.json({
     processed: results.length,
+    analysisUpdated: analysisResults.length,
     results,
     errors,
     timestamp: new Date().toISOString(),

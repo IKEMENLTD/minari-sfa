@@ -232,7 +232,7 @@ export interface AnalysisReportResult {
   keyInsights: string;
   challengesAndNeeds: string;
   timeline: string;
-  faq: string;
+  competitiveAnalysis: string;
   riskAssessment: string;
   recommendedActions: string;
 }

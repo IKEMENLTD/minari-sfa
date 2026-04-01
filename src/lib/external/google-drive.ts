@@ -318,15 +318,14 @@ export async function findSalesDeckDoc(
     const allData = (await allRes.json()) as { files?: Array<{ id: string; name: string; webViewLink?: string }> };
     if (!allData.files?.length) return null;
 
-    // 「商談議事録」を含むDoc優先、なければフォルダ内の最初のDoc
+    // 「商談議事録」を含むDocのみ使用（無関係なDocを勝手に上書きしない）
     const gisrokuDoc = allData.files.find((f) => f.name.includes('商談議事録'));
-    const matchedFile = gisrokuDoc ?? allData.files[0];
 
-    if (matchedFile) {
-      console.log(`Doc部分一致で発見: "${matchedFile.name}" (検索名: "${searchName}")`);
+    if (gisrokuDoc) {
+      console.log(`Doc部分一致で発見: "${gisrokuDoc.name}" (検索名: "${searchName}")`);
       return {
-        docId: matchedFile.id,
-        docUrl: matchedFile.webViewLink ?? `https://docs.google.com/document/d/${matchedFile.id}/edit`,
+        docId: gisrokuDoc.id,
+        docUrl: gisrokuDoc.webViewLink ?? `https://docs.google.com/document/d/${gisrokuDoc.id}/edit`,
       };
     }
 
@@ -509,6 +508,146 @@ export async function replaceDocumentContent(
       const errBody = await updateRes.text();
       console.error('Google Docs 置換エラー詳細:', errBody);
       throw new Error(`Google Docs API 置換エラー (${updateRes.status})`);
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/** 見出しマーカーの正規表現 */
+const HEADING_MARKER_RE = /^【(H[12])】(.+)$/;
+
+interface HeadingRange {
+  startIndex: number;
+  endIndex: number;
+  level: 'HEADING_1' | 'HEADING_2';
+}
+
+/**
+ * Google ドキュメントの内容を全面置換し、見出しマーカーをネイティブ見出しスタイルに変換する
+ * - テキスト内の「【H1】タイトル」「【H2】セクション名」を検出
+ * - insertText後にupdateParagraphStyleでHEADING_1/HEADING_2を適用
+ * - マーカー文字列自体はDocに出力しない（タイトルテキストのみ）
+ */
+export async function replaceDocumentWithHeadings(
+  docId: string,
+  content: string,
+): Promise<void> {
+  if (!DOC_ID_PATTERN.test(docId)) {
+    throw new Error('無効な Google Doc ID です');
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    const token = await getAccessToken(controller.signal);
+
+    // 1. ドキュメントの現在の内容長を取得
+    const getRes = await fetch(`${GOOGLE_DOCS_API}/${docId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+
+    if (!getRes.ok) {
+      const errBody = await getRes.text();
+      throw new Error(`Google Docs API 取得エラー (${getRes.status}): ${errBody.slice(0, 200)}`);
+    }
+
+    const docData = (await getRes.json()) as {
+      body?: { content?: Array<{ endIndex?: number }> }
+    };
+    const bodyContent = docData.body?.content ?? [];
+    const lastElement = bodyContent[bodyContent.length - 1];
+    const endIndex = lastElement?.endIndex ?? 1;
+
+    // 2. マーカーを除去したテキストを作成し、見出し位置を記録
+    const lines = content.split('\n');
+    const cleanLines: string[] = [];
+    const headingLineIndices: Array<{ lineIndex: number; level: 'HEADING_1' | 'HEADING_2' }> = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const match = HEADING_MARKER_RE.exec(lines[i]);
+      if (match) {
+        const level = match[1] === 'H1' ? 'HEADING_1' as const : 'HEADING_2' as const;
+        headingLineIndices.push({ lineIndex: cleanLines.length, level });
+        cleanLines.push(match[2]); // マーカーを除去したタイトルテキストのみ
+      } else {
+        cleanLines.push(lines[i]);
+      }
+    }
+
+    const cleanContent = cleanLines.join('\n');
+
+    // 3. 見出し行のドキュメント内の文字位置を計算（index=1が先頭）
+    const headingRanges: HeadingRange[] = [];
+    let charOffset = 1; // Docs API index は 1 始まり
+    for (let i = 0; i < cleanLines.length; i++) {
+      const lineLen = cleanLines[i].length;
+      const headingInfo = headingLineIndices.find((h) => h.lineIndex === i);
+      if (headingInfo) {
+        headingRanges.push({
+          startIndex: charOffset,
+          endIndex: charOffset + lineLen + 1, // +1 for newline
+          level: headingInfo.level,
+        });
+      }
+      charOffset += lineLen + 1; // +1 for newline
+    }
+
+    // 4. batchUpdate: 削除 → 挿入 → 見出しスタイル適用
+    const requests: Array<Record<string, unknown>> = [];
+
+    // 既存コンテンツを削除
+    if (endIndex > 2) {
+      requests.push({
+        deleteContentRange: {
+          range: { startIndex: 1, endIndex: endIndex - 1 },
+        },
+      });
+    }
+
+    // 新しいコンテンツを挿入
+    requests.push({
+      insertText: {
+        location: { index: 1 },
+        text: cleanContent,
+      },
+    });
+
+    // 見出しスタイルを適用（挿入後のインデックスに基づく）
+    for (const heading of headingRanges) {
+      requests.push({
+        updateParagraphStyle: {
+          range: {
+            startIndex: heading.startIndex,
+            endIndex: heading.endIndex,
+          },
+          paragraphStyle: {
+            namedStyleType: heading.level,
+          },
+          fields: 'namedStyleType',
+        },
+      });
+    }
+
+    const updateRes = await fetch(
+      `${GOOGLE_DOCS_API}/${docId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ requests }),
+        signal: controller.signal,
+      },
+    );
+
+    if (!updateRes.ok) {
+      const errBody = await updateRes.text();
+      console.error('Google Docs 見出し付き置換エラー詳細:', errBody);
+      throw new Error(`Google Docs API 見出し付き置換エラー (${updateRes.status})`);
     }
   } finally {
     clearTimeout(timeoutId);

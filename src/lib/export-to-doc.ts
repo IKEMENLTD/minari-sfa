@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import {
-  replaceDocumentContent, createDocument,
+  replaceDocumentWithHeadings, createDocument,
   findCompanyFolder, createFolder, findSalesDeckDoc,
 } from '@/lib/external/google-drive';
 import { generateAnalysisReport } from '@/lib/external/claude';
@@ -8,12 +8,14 @@ import type { AnalysisReportResult } from '@/types';
 
 const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID ?? '';
 
-/** 分析レポート生成の専用タイムアウト（Renderの30秒制限対策） */
-const ANALYSIS_TIMEOUT_MS = 15_000;
+// ---------------------------------------------------------------------------
+// 公開API
+// ---------------------------------------------------------------------------
 
 /**
- * 企業のGoogle Docsを全面置換する
+ * 議事録のみをGoogle Docsに書き出す（同期処理）
  * - 企業の全承認済み議事録を取得し、Docを丸ごと書き直す
+ * - 分析レポートは含めない（cronで別途生成）
  * - 再生成しても重複しない（毎回全件で上書き）
  * - 新規企業はDoc自動作成、既存企業は既存Docを上書き
  */
@@ -36,6 +38,89 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
   }
 
   // 企業名・IDを決定
+  const { companyName, companyId } = await resolveCompany(supabase, meeting, meetingId);
+
+  // Google Doc を検索 or 作成
+  const { docId, docUrl, isNew } = await resolveOrCreateDoc(supabase, companyName, companyId);
+
+  // 全承認済み議事録でDocを書き直す（分析レポートなし）
+  const sections = await buildMeetingSections(supabase, companyId);
+  const content = buildFullDocument(companyName, sections, null);
+  await replaceDocumentWithHeadings(docId, content);
+
+  return { docUrl, isNew };
+}
+
+/**
+ * 分析レポートを生成し、Google Docsを議事録+分析レポートで全面置換する（cron非同期）
+ * - cronから呼ばれるため、Promise.raceタイムアウトは不要
+ * - generateAnalysisReport内部のAbortController 120秒タイムアウトは維持される
+ */
+export async function exportAnalysisToDoc(companyId: string): Promise<void> {
+  if (!GOOGLE_DRIVE_FOLDER_ID) {
+    throw new Error('環境変数 GOOGLE_DRIVE_FOLDER_ID が未設定です');
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  // 企業情報を取得
+  const { data: company, error: companyError } = await supabase
+    .from('companies')
+    .select('id, name')
+    .eq('id', companyId)
+    .single();
+
+  if (companyError || !company) {
+    throw new Error(`企業データが見つかりません (id=${companyId}): ${companyError?.message ?? '該当なし'}`);
+  }
+
+  const companyName = company.name as string;
+
+  // Google Doc を検索（存在しなければエラー: cronは新規作成しない）
+  const { data: existingDoc } = await supabase
+    .from('google_docs')
+    .select('doc_id')
+    .eq('company_id', companyId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!existingDoc) {
+    throw new Error(`企業「${companyName}」のGoogle Docが未作成です。先に議事録書き出しを実行してください。`);
+  }
+
+  const docId = existingDoc.doc_id as string;
+
+  // 全承認済み議事録を取得
+  const sections = await buildMeetingSections(supabase, companyId);
+
+  // 要約テキストを収集（分析レポート生成用）
+  const meetingEntries = sections.map((s) => ({ date: s.meetingDate, text: s.summaryText }));
+
+  // 分析レポート生成（タイムアウトなし、失敗時はnull）
+  const analysisReport = await generateAnalysisReportSafe(companyName, meetingEntries);
+
+  // Docを全面置換（議事録 + 分析レポート）
+  const content = buildFullDocument(companyName, sections, analysisReport);
+  await replaceDocumentWithHeadings(docId, content);
+}
+
+// ---------------------------------------------------------------------------
+// 内部ヘルパー: 企業解決
+// ---------------------------------------------------------------------------
+
+interface ResolvedCompany {
+  companyName: string;
+  companyId: string;
+}
+
+/**
+ * 商談データから企業名・IDを解決する（未登録なら作成）
+ */
+async function resolveCompany(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  meeting: Record<string, unknown>,
+  meetingId: string,
+): Promise<ResolvedCompany> {
   let companyName = meeting.ai_estimated_company as string || '';
   let companyId = meeting.company_id as string | null;
 
@@ -87,11 +172,27 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
     throw new Error('企業IDの取得・作成に失敗しました');
   }
 
-  // Google Doc を検索 or 作成
-  let docId: string;
-  let docUrl: string;
-  let isNew = false;
+  return { companyName, companyId };
+}
 
+// ---------------------------------------------------------------------------
+// 内部ヘルパー: Google Doc 解決・作成
+// ---------------------------------------------------------------------------
+
+interface ResolvedDoc {
+  docId: string;
+  docUrl: string;
+  isNew: boolean;
+}
+
+/**
+ * Google Docを検索し、なければ作成する
+ */
+async function resolveOrCreateDoc(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  companyName: string,
+  companyId: string,
+): Promise<ResolvedDoc> {
   const { data: existingDoc } = await supabase
     .from('google_docs')
     .select('doc_id, doc_url')
@@ -100,211 +201,248 @@ export async function exportMeetingToDoc(meetingId: string): Promise<{ docUrl: s
     .maybeSingle();
 
   if (existingDoc) {
-    docId = existingDoc.doc_id as string;
-    docUrl = existingDoc.doc_url as string;
+    return {
+      docId: existingDoc.doc_id as string,
+      docUrl: existingDoc.doc_url as string,
+      isNew: false,
+    };
+  }
+
+  // サブフォルダ構造対応
+  let companyFolderId: string;
+  const existingFolder = await findCompanyFolder(companyName, GOOGLE_DRIVE_FOLDER_ID);
+
+  if (existingFolder) {
+    companyFolderId = existingFolder.folderId;
+    console.log(`既存サブフォルダ発見: ${existingFolder.folderName} (${companyName})`);
   } else {
-    // --- サブフォルダ構造対応 ---
-    // 1. 企業名のサブフォルダを検索（既存PLOUDフォルダを再利用）
-    let companyFolderId: string;
-    const existingFolder = await findCompanyFolder(companyName, GOOGLE_DRIVE_FOLDER_ID);
+    companyFolderId = await createFolder(companyName, GOOGLE_DRIVE_FOLDER_ID);
+    console.log(`サブフォルダ作成: ${companyName}`);
+  }
 
-    if (existingFolder) {
-      companyFolderId = existingFolder.folderId;
-      console.log(`既存サブフォルダ発見: ${existingFolder.folderName} (${companyName})`);
-    } else {
-      // サブフォルダを新規作成
-      companyFolderId = await createFolder(companyName, GOOGLE_DRIVE_FOLDER_ID);
-      console.log(`サブフォルダ作成: ${companyName}`);
-    }
+  // サブフォルダ内でSALES DECK Docを検索（自動修復）
+  const foundDoc = await findSalesDeckDoc(companyName, companyFolderId);
 
-    // 2. サブフォルダ内でSALES DECK Docを検索（自動修復）
-    const foundDoc = await findSalesDeckDoc(companyName, companyFolderId);
+  let docId: string;
+  let docUrl: string;
+  let isNew = false;
 
-    if (foundDoc) {
-      docId = foundDoc.docId;
-      docUrl = foundDoc.docUrl;
-      console.log(`自動修復: 既存Doc発見 → DBに登録 (${companyName}): ${docUrl}`);
-    } else {
-      // サブフォルダ内に新規作成（権限不足なら親フォルダで再試行、容量超過は即エラー）
-      try {
-        const docResult = await createDocument(companyName, companyFolderId);
+  if (foundDoc) {
+    docId = foundDoc.docId;
+    docUrl = foundDoc.docUrl;
+    console.log(`自動修復: 既存Doc発見 → DBに登録 (${companyName}): ${docUrl}`);
+  } else {
+    // サブフォルダ内に新規作成（権限不足なら親フォルダで再試行、容量超過は即エラー）
+    try {
+      const docResult = await createDocument(companyName, companyFolderId);
+      docId = docResult.docId;
+      docUrl = docResult.docUrl;
+      isNew = true;
+    } catch (createErr) {
+      const msg = createErr instanceof Error ? createErr.message : '';
+      if (msg.includes('storageQuotaExceeded') || msg.includes('storage quota')) {
+        throw new Error('Google Driveの容量が上限に達しています。サービスアカウントのDrive内の不要ファイルを削除してください。');
+      }
+      if (msg.includes('403')) {
+        console.warn(`サブフォルダへの書き込み権限なし → 親フォルダで再試行 (${companyName})`);
+        const docResult = await createDocument(companyName, GOOGLE_DRIVE_FOLDER_ID);
         docId = docResult.docId;
         docUrl = docResult.docUrl;
         isNew = true;
-      } catch (createErr) {
-        const msg = createErr instanceof Error ? createErr.message : '';
-        if (msg.includes('storageQuotaExceeded') || msg.includes('storage quota')) {
-          throw new Error('Google Driveの容量が上限に達しています。サービスアカウントのDrive内の不要ファイルを削除してください。');
-        }
-        if (msg.includes('403')) {
-          console.warn(`サブフォルダへの書き込み権限なし → 親フォルダで再試行 (${companyName})`);
-          const docResult = await createDocument(companyName, GOOGLE_DRIVE_FOLDER_ID);
-          docId = docResult.docId;
-          docUrl = docResult.docUrl;
-          isNew = true;
-          companyFolderId = GOOGLE_DRIVE_FOLDER_ID;
-        } else {
-          throw createErr;
-        }
+        companyFolderId = GOOGLE_DRIVE_FOLDER_ID;
+      } else {
+        throw createErr;
       }
-    }
-
-    const { error: docInsertErr } = await supabase.from('google_docs').insert({
-      company_id: companyId,
-      doc_url: docUrl,
-      doc_id: docId,
-      folder: companyFolderId,
-    });
-    if (docInsertErr) {
-      console.error('google_docs登録エラー:', docInsertErr.message);
     }
   }
 
-  // ---- 全面置換: 企業の全承認済み議事録を取得してDocを書き直す ----
+  const { error: docInsertErr } = await supabase.from('google_docs').insert({
+    company_id: companyId,
+    doc_url: docUrl,
+    doc_id: docId,
+    folder: companyFolderId,
+  });
+  if (docInsertErr) {
+    console.error('google_docs登録エラー:', docInsertErr.message);
+  }
 
+  return { docId, docUrl, isNew };
+}
+
+// ---------------------------------------------------------------------------
+// 内部ヘルパー: 議事録セクション構築
+// ---------------------------------------------------------------------------
+
+interface MeetingSection {
+  meetingDate: string;
+  participants: string[];
+  source: string;
+  summaryText: string;
+  index: number;
+}
+
+/**
+ * 企業の全承認済み議事録セクションを構築する（要約なしの商談はスキップ）
+ */
+async function buildMeetingSections(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  companyId: string,
+): Promise<MeetingSection[]> {
   const { data: allMeetings } = await supabase
     .from('meetings')
-    .select('id, meeting_date, participants, source, ai_estimated_company')
+    .select('id, meeting_date, participants, source')
     .eq('company_id', companyId)
     .eq('approval_status', 'approved')
     .order('meeting_date', { ascending: true });
 
   if (!allMeetings || allMeetings.length === 0) {
-    // 承認済みがなければ対象meetingだけで書き出し
-    const { data: summary } = await supabase
-      .from('summaries')
-      .select('summary_text')
-      .eq('meeting_id', meetingId)
-      .single();
-
-    const singleContent = buildSectionContent(meeting, summary, companyName);
-    const summaryTexts = summary?.summary_text ? [summary.summary_text as string] : [];
-    const analysisReport = await generateAnalysisReportSafe(companyName, summaryTexts);
-    await replaceDocumentContent(docId, buildFullDocument(companyName, [singleContent], analysisReport));
-    return { docUrl, isNew };
+    return [];
   }
 
-  // 各議事録のセクションを生成
   const meetingIds = allMeetings.map((m) => m.id as string);
-  const { data: summaries } = meetingIds.length > 0
-    ? await supabase
-        .from('summaries')
-        .select('meeting_id, summary_text')
-        .in('meeting_id', meetingIds)
-    : { data: [] };
+  const { data: summaries } = await supabase
+    .from('summaries')
+    .select('meeting_id, summary_text')
+    .in('meeting_id', meetingIds);
 
   const summaryMap = new Map<string, string>();
   for (const s of summaries ?? []) {
     summaryMap.set(s.meeting_id as string, s.summary_text as string);
   }
 
-  const sections: string[] = [];
-  const summaryTexts: string[] = [];
+  const sections: MeetingSection[] = [];
+  let index = 1;
   for (const m of allMeetings) {
     const summaryText = summaryMap.get(m.id as string) ?? '';
-    sections.push(buildSectionContent(m, { summary_text: summaryText }, companyName));
-    if (summaryText) summaryTexts.push(summaryText);
+    // 要約なしの商談はスキップ
+    if (!summaryText) continue;
+
+    sections.push({
+      meetingDate: m.meeting_date as string,
+      participants: (m.participants as string[]) ?? [],
+      source: m.source as string,
+      summaryText,
+      index,
+    });
+    index++;
   }
 
-  // 分析レポート生成（失敗しても議事録書き出しは継続）
-  const analysisReport = await generateAnalysisReportSafe(companyName, summaryTexts);
-  await replaceDocumentContent(docId, buildFullDocument(companyName, sections, analysisReport));
-
-  return { docUrl, isNew };
+  return sections;
 }
 
-// ---- ヘルパー関数 ----
+// ---------------------------------------------------------------------------
+// 内部ヘルパー: 分析レポート生成（安全ラッパー）
+// ---------------------------------------------------------------------------
 
 /**
- * 分析レポート生成（失敗・タイムアウト時はnullを返し、議事録書き出しを妨げない）
- * Renderの30秒リクエスト制限対策として、分析は専用の短いタイムアウトで実行する
+ * 分析レポート生成（失敗時はnullを返し、処理を妨げない）
+ * cron実行のためPromise.raceタイムアウトは不要。
+ * generateAnalysisReport内部のAbortController 120秒タイムアウトは維持される。
  */
 async function generateAnalysisReportSafe(
   companyName: string,
-  summaryTexts: string[],
+  meetings: Array<{ date: string; text: string }>,
 ): Promise<AnalysisReportResult | null> {
-  if (summaryTexts.length === 0) return null;
+  if (meetings.length === 0) return null;
 
   try {
-    const result = await Promise.race([
-      generateAnalysisReport(companyName, summaryTexts),
-      new Promise<null>((resolve) =>
-        setTimeout(() => {
-          console.warn(`分析レポート生成がタイムアウト (${ANALYSIS_TIMEOUT_MS}ms) — スキップして議事録書き出しを継続`);
-          resolve(null);
-        }, ANALYSIS_TIMEOUT_MS)
-      ),
-    ]);
-    return result;
+    return await generateAnalysisReport(companyName, meetings);
   } catch (err) {
-    console.error('分析レポート生成に失敗しました（議事録書き出しは継続）:', err instanceof Error ? err.message : err);
+    console.error('分析レポート生成に失敗しました:', err instanceof Error ? err.message : err);
     return null;
   }
 }
 
+// ---------------------------------------------------------------------------
+// 内部ヘルパー: ドキュメント構築
+// ---------------------------------------------------------------------------
+
 /**
- * 分析レポートセクションをテキストに変換する
+ * 分析レポートセクションをテキストに変換する（見出しマーカー付き）
  */
 function buildAnalysisSection(report: AnalysisReportResult): string {
   return [
-    `${'*'.repeat(50)}`,
-    `  AI 分析レポート（自動生成）`,
-    `  生成日時: ${new Date().toISOString().split('T')[0]}`,
-    `${'*'.repeat(50)}`,
     '',
-    '[ エグゼクティブサマリー ]',
+    '【H2】分析サマリ',
     report.executiveSummary,
     '',
-    '[ 重要インサイト ]',
+    '【H2】重要インサイト',
     report.keyInsights,
     '',
-    '[ 課題・ニーズ分析 ]',
+    '【H2】課題・ニーズ分析',
     report.challengesAndNeeds,
     '',
-    '[ 商談タイムライン ]',
+    '【H2】商談タイムライン',
     report.timeline,
     '',
-    '[ 想定FAQ ]',
-    report.faq,
+    '【H2】競合状況',
+    report.competitiveAnalysis,
     '',
-    '[ リスク評価 ]',
+    '【H2】リスク評価',
     report.riskAssessment,
     '',
-    '[ 推奨アクション ]',
+    '【H2】推奨アクション',
     report.recommendedActions,
-    '',
-    `${'*'.repeat(50)}`,
-    '',
   ].join('\n');
 }
 
-function buildFullDocument(
-  companyName: string,
-  sections: string[],
-  analysisReport?: AnalysisReportResult | null,
-): string {
-  const header = `${companyName} - 商談議事録\n${'='.repeat(50)}\n\n`;
-  const analysisPart = analysisReport ? buildAnalysisSection(analysisReport) + '\n' : '';
-  const meetingsHeader = `${'='.repeat(50)}\n  個別商談記録\n${'='.repeat(50)}\n\n`;
-  return header + analysisPart + meetingsHeader + sections.join('\n\n');
-}
-
-function buildSectionContent(
-  meeting: Record<string, unknown>,
-  summary: { summary_text?: string } | null,
-  companyName: string,
-): string {
-  const participants = (meeting.participants as string[]) ?? [];
-  const summaryText = summary?.summary_text ?? '';
+/**
+ * 個別商談セクションをテキストに変換する（見出しマーカー付き）
+ */
+function buildMeetingSectionText(section: MeetingSection): string {
+  const participantsStr = section.participants.join(', ') || '(不明)';
 
   return [
-    `${'─'.repeat(40)}`,
-    `商談日: ${meeting.meeting_date as string}`,
-    `企業名: ${companyName}`,
-    `参加者: ${participants.join(', ') || '(不明)'}`,
-    `ソース: ${meeting.source as string}`,
-    `${'─'.repeat(40)}`,
+    `【H2】第${section.index}回 ${section.meetingDate}`,
+    `参加者: ${participantsStr}`,
+    `ソース: ${section.source}`,
     '',
-    summaryText || '(要約なし)',
+    section.summaryText,
   ].join('\n');
+}
+
+/**
+ * 完全なドキュメントを構築する（見出しマーカー付き）
+ */
+function buildFullDocument(
+  companyName: string,
+  sections: MeetingSection[],
+  analysisReport: AnalysisReportResult | null,
+): string {
+  const parts: string[] = [];
+
+  // ヘッダー
+  parts.push(`【H1】${companyName} 商談インテリジェンスレポート`);
+  parts.push('');
+
+  // ドキュメント情報
+  parts.push('【H2】ドキュメント情報');
+  parts.push(`目的: ${companyName}との営業案件に関する議事録・分析レポート`);
+
+  if (sections.length > 0) {
+    const oldest = sections[0].meetingDate;
+    const newest = sections[sections.length - 1].meetingDate;
+    parts.push(`対象期間: ${oldest} 〜 ${newest}`);
+  }
+
+  parts.push(`最終更新: ${new Date().toISOString().split('T')[0]}`);
+  parts.push(`商談回数: ${sections.length}回`);
+
+  // 分析レポート（ある場合のみ）
+  if (analysisReport) {
+    parts.push(buildAnalysisSection(analysisReport));
+  }
+
+  // 個別商談記録
+  if (sections.length > 0) {
+    parts.push('');
+    parts.push('【H1】個別商談記録');
+
+    for (const section of sections) {
+      parts.push('');
+      parts.push(buildMeetingSectionText(section));
+    }
+  }
+
+  return parts.join('\n');
 }
