@@ -10,8 +10,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'SALES DECK',
-  description: '営業管理プラットフォーム',
+  title: 'DEAL BOARD',
+  description: '営業案件管理ツール',
 };
 
 export default function RootLayout({

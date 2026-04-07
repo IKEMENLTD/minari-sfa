@@ -8,7 +8,7 @@ interface LogoProps {
   className?: string;
 }
 
-/** Icon-only version: stacked cards representing a deck */
+/** Icon-only: signal/pulse representing deal tracking */
 function LogoIcon({ size = 28, className }: LogoIconProps) {
   return (
     <svg
@@ -20,52 +20,30 @@ function LogoIcon({ size = 28, className }: LogoIconProps) {
       className={className}
       aria-hidden="true"
     >
-      {/* Back card */}
-      <rect
-        x="3"
-        y="5"
-        width="20"
-        height="22"
-        rx="2"
-        fill="#1d4ed8"
-        opacity="0.3"
-        transform="rotate(-6 3 5)"
+      {/* Background */}
+      <rect width="32" height="32" rx="4" fill="#050505" />
+      {/* Pulse line */}
+      <polyline
+        points="4,20 9,20 12,10 16,24 20,14 24,18 28,18"
+        stroke="#3b82f6"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
       />
-      {/* Middle card */}
-      <rect
-        x="5"
-        y="4"
-        width="20"
-        height="22"
-        rx="2"
-        fill="#2563eb"
-        opacity="0.55"
-        transform="rotate(-2 5 4)"
-      />
-      {/* Front card */}
-      <rect
-        x="7"
-        y="5"
-        width="20"
-        height="22"
-        rx="2"
-        fill="#2563eb"
-      />
-      {/* Bar chart on front card */}
-      <rect x="11" y="16" width="3" height="7" rx="0.5" fill="white" opacity="0.9" />
-      <rect x="15.5" y="13" width="3" height="10" rx="0.5" fill="white" opacity="0.9" />
-      <rect x="20" y="10" width="3" height="13" rx="0.5" fill="white" opacity="0.9" />
+      {/* Dot accent */}
+      <circle cx="16" cy="24" r="1.5" fill="#ccff00" opacity="0.8" />
     </svg>
   );
 }
 
-/** Full logo: icon + "SALES DECK" text */
+/** Full logo: icon + "DEAL BOARD" text */
 function Logo({ size = 28, className }: LogoProps) {
   return (
     <div className={`flex items-center gap-2 ${className ?? ''}`}>
       <LogoIcon size={size} />
       <span className="text-sm font-semibold text-text tracking-tight uppercase">
-        SALES DECK
+        DEAL BOARD
       </span>
     </div>
   );
