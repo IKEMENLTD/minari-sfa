@@ -1,71 +1,87 @@
 // =============================================================================
-// 営業フェーズ定義 - ラズリ SaaS 営業向け
+// 営業フェーズ定義 - 内藤さんシステム（5段階）
 // =============================================================================
 
-export interface SalesPhaseDefinition {
-  id: string;
+import type { DealPhase, DealProbability } from '@/types';
+
+export interface PhaseDefinition {
+  id: DealPhase;
   name: string;
   order: number;
   description: string;
 }
 
-/**
- * 営業フェーズ一覧（約30種）
- * ラズリの SaaS 営業プロセスに適したフェーズ定義
- */
-export const SALES_PHASES: readonly SalesPhaseDefinition[] = [
-  // --- リード獲得・初期接触 ---
-  { id: 'a0000000-0000-0000-0000-000000000001', name: 'リード獲得', order: 1, description: 'マーケティング施策や展示会等でリードを獲得した段階' },
-  { id: 'a0000000-0000-0000-0000-000000000002', name: 'リード精査', order: 2, description: 'リードの有効性・ターゲット適合度を確認' },
-  { id: 'a0000000-0000-0000-0000-000000000003', name: '初回アポ調整', order: 3, description: '初回打ち合わせの日程調整中' },
-  { id: 'a0000000-0000-0000-0000-000000000004', name: '初回接触', order: 4, description: '初回の電話・メール・商談を実施' },
-
-  // --- ヒアリング・課題把握 ---
-  { id: 'a0000000-0000-0000-0000-000000000005', name: 'ヒアリング実施', order: 5, description: '顧客の業務課題・現状をヒアリング' },
-  { id: 'a0000000-0000-0000-0000-000000000006', name: '課題把握', order: 6, description: '顧客の根本課題を特定・整理' },
-  { id: 'a0000000-0000-0000-0000-000000000007', name: 'ニーズ確認', order: 7, description: '顧客のニーズと導入意欲を確認' },
-  { id: 'a0000000-0000-0000-0000-000000000008', name: '決裁者特定', order: 8, description: '意思決定者・決裁フローを把握' },
-
-  // --- 提案・デモ ---
-  { id: 'a0000000-0000-0000-0000-000000000009', name: '提案準備', order: 9, description: '提案資料・デモ環境を準備' },
-  { id: 'a0000000-0000-0000-0000-000000000010', name: '初回提案', order: 10, description: '初回のソリューション提案を実施' },
-  { id: 'a0000000-0000-0000-0000-000000000011', name: 'デモ実施', order: 11, description: '製品デモを実施' },
-  { id: 'a0000000-0000-0000-0000-000000000012', name: 'トライアル提供', order: 12, description: 'トライアル環境を提供し評価中' },
-  { id: 'a0000000-0000-0000-0000-000000000013', name: 'トライアル評価', order: 13, description: 'トライアル結果の評価・フィードバック収集' },
-
-  // --- 見積・交渉 ---
-  { id: 'a0000000-0000-0000-0000-000000000014', name: '見積作成', order: 14, description: '見積書を作成中' },
-  { id: 'a0000000-0000-0000-0000-000000000015', name: '見積提出', order: 15, description: '見積書を提出済み' },
-  { id: 'a0000000-0000-0000-0000-000000000016', name: '価格交渉', order: 16, description: '価格・条件について交渉中' },
-  { id: 'a0000000-0000-0000-0000-000000000017', name: '競合比較', order: 17, description: '競合製品と比較検討されている段階' },
-  { id: 'a0000000-0000-0000-0000-000000000018', name: '社内稟議中', order: 18, description: '顧客社内で稟議・承認プロセス中' },
-
-  // --- 契約 ---
-  { id: 'a0000000-0000-0000-0000-000000000019', name: '契約条件調整', order: 19, description: '契約書の条件を調整中' },
-  { id: 'a0000000-0000-0000-0000-000000000020', name: '契約書送付', order: 20, description: '契約書を送付済み' },
-  { id: 'a0000000-0000-0000-0000-000000000021', name: '契約締結', order: 21, description: '契約を締結' },
-
-  // --- 導入・オンボーディング ---
-  { id: 'a0000000-0000-0000-0000-000000000022', name: '導入準備', order: 22, description: '導入に向けた準備・設定作業' },
-  { id: 'a0000000-0000-0000-0000-000000000023', name: 'キックオフ', order: 23, description: 'プロジェクトキックオフを実施' },
-  { id: 'a0000000-0000-0000-0000-000000000024', name: '初期設定', order: 24, description: 'システムの初期設定・データ移行' },
-  { id: 'a0000000-0000-0000-0000-000000000025', name: 'トレーニング', order: 25, description: 'ユーザートレーニングを実施' },
-  { id: 'a0000000-0000-0000-0000-000000000026', name: '本番稼働', order: 26, description: '本番環境で稼働開始' },
-
-  // --- 運用・拡大 ---
-  { id: 'a0000000-0000-0000-0000-000000000027', name: '運用定着', order: 27, description: '運用が定着し安定利用中' },
-  { id: 'a0000000-0000-0000-0000-000000000028', name: '定期レビュー', order: 28, description: '定期的な利用状況レビューを実施' },
-  { id: 'a0000000-0000-0000-0000-000000000029', name: 'アップセル検討', order: 29, description: '追加機能・プランのアップセルを検討中' },
-  { id: 'a0000000-0000-0000-0000-000000000030', name: '契約更新', order: 30, description: '契約更新の時期・更新交渉中' },
-
-  // --- 特殊ステータス ---
-  { id: 'a0000000-0000-0000-0000-000000000091', name: '保留', order: 91, description: '顧客都合で一時保留中' },
-  { id: 'a0000000-0000-0000-0000-000000000092', name: '失注', order: 92, description: '失注・見送りとなった案件' },
-  { id: 'a0000000-0000-0000-0000-000000000093', name: '解約', order: 93, description: '解約となった案件' },
+export const DEAL_PHASES: readonly PhaseDefinition[] = [
+  { id: 'proposal_planned', name: '提案予定', order: 1, description: 'これからアプローチする案件' },
+  { id: 'proposal_active', name: '提案中', order: 2, description: '提案済みで動きがある案件' },
+  { id: 'waiting', name: '相談待ち', order: 3, description: '相手のボールになっている案件' },
+  { id: 'follow_up', name: '継続フォロー', order: 4, description: '定期的にフォローが必要な案件' },
+  { id: 'active', name: '稼働中', order: 5, description: '受注済みで稼働中の案件' },
 ] as const;
+
+export const PHASE_LABEL: Record<DealPhase, string> = {
+  proposal_planned: '提案予定',
+  proposal_active: '提案中',
+  waiting: '相談待ち',
+  follow_up: '継続フォロー',
+  active: '稼働中',
+};
+
+export const PROBABILITY_LABEL: Record<DealProbability, string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
+  very_low: '極低',
+  unknown: '不明',
+};
+
+export const PROBABILITY_COLOR: Record<DealProbability, string> = {
+  high: 'text-blue-400 bg-blue-400/10 border-blue-400/30',
+  medium: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30',
+  low: 'text-zinc-400 bg-zinc-400/10 border-zinc-400/30',
+  very_low: 'text-red-400 bg-red-400/10 border-red-400/30',
+  unknown: 'text-gray-400 bg-gray-400/10 border-gray-400/30',
+};
+
+export const TIER_LABEL: Record<number, string> = {
+  1: 'Tier 1 - 相互認知',
+  2: 'Tier 2 - 面識あり',
+  3: 'Tier 3 - 片面識',
+  4: 'Tier 4 - 不明',
+};
+
+export const TOOL_LABEL: Record<string, string> = {
+  teams: 'Teams',
+  zoom: 'Zoom',
+  meet: 'Google Meet',
+  in_person: '対面',
+  phone: '電話',
+};
+
+export const INQUIRY_SOURCE_LABEL: Record<string, string> = {
+  website: 'HP',
+  phone: '電話',
+  other: 'その他',
+};
+
+export const INQUIRY_STATUS_LABEL: Record<string, string> = {
+  new: '未対応',
+  in_progress: '対応中',
+  completed: '完了',
+};
 
 /** API タイムアウト（ミリ秒） */
 export const API_TIMEOUT_MS = 120_000;
 
+/** TLDV API タイムアウト（ミリ秒） */
+export const TLDV_API_TIMEOUT_MS = 30_000;
+
 /** 1ページあたりの取得件数 */
 export const DEFAULT_PAGE_SIZE = 50;
+
+/** 次アクション期間ショートカット（日数） */
+export const ACTION_DATE_SHORTCUTS = [
+  { label: '1週間後', days: 7 },
+  { label: '1ヶ月後', days: 30 },
+  { label: '3ヶ月後', days: 90 },
+] as const;

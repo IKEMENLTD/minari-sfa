@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth, validateContentType, requireRole, isAuthError } from '@/lib/auth';
-import { syncAllToSheet } from '@/lib/external/google-sheets';
-import type { DealWithDetails, ApiResult } from '@/types';
-
-const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID ?? '';
+import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
+import type { DealWithContact, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
 // バリデーション
@@ -13,11 +10,26 @@ const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID ?? '';
 
 const uuidSchema = z.string().uuid();
 
-const updateDealStatusSchema = z.object({
-  current_phase_id: z.string().uuid().optional(),
-  next_action: z.string().max(500).optional(),
-  status_summary: z.string().max(2000).optional(),
-  last_meeting_date: z.string().date().optional(),
+const updateDealSchema = z.object({
+  contact_id: z.string().uuid().optional(),
+  title: z.string().min(1).max(500).optional(),
+  phase: z.enum(['proposal_planned', 'proposal_active', 'waiting', 'follow_up', 'active']).optional(),
+  probability: z.enum(['high', 'medium', 'low', 'very_low', 'unknown']).nullable().optional(),
+  next_action: z.string().max(500).nullable().optional(),
+  next_action_date: z.string().max(20).nullable().optional(),
+  assigned_to: z.string().uuid().optional(),
+  note: z.string().max(2000).nullable().optional(),
+  deliverable: z.string().max(1000).nullable().optional(),
+  industry: z.string().max(500).nullable().optional(),
+  deadline: z.string().max(20).nullable().optional(),
+  revenue: z.number().int().min(0, '報酬は0以上を指定してください').nullable().optional(),
+  target_country: z.string().max(200).nullable().optional(),
+  tax_type: z.enum(['included', 'excluded']).nullable().optional(),
+  has_movement: z.boolean().optional(),
+  status_detail: z.string().max(1000).nullable().optional(),
+  billing_month: z.string().max(50).nullable().optional(),
+  client_contact_name: z.string().max(200).nullable().optional(),
+  revenue_note: z.string().max(1000).nullable().optional(),
 }).strict();
 
 // ---------------------------------------------------------------------------
@@ -27,9 +39,9 @@ const updateDealStatusSchema = z.object({
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<ApiResult<DealWithDetails>>> {
-  const authResult = await validateAuth(request);
-  if (authResult instanceof NextResponse) return authResult as NextResponse<ApiResult<DealWithDetails>>;
+): Promise<NextResponse<ApiResult<DealWithContact>>> {
+  const auth = await validateAuth(request);
+  if (isAuthError(auth)) return auth as NextResponse<ApiResult<DealWithContact>>;
 
   try {
     const { id } = await params;
@@ -39,15 +51,12 @@ export async function GET(
         { status: 400 }
       );
     }
+
     const supabase = createServerSupabaseClient();
 
     const { data, error } = await supabase
-      .from('deal_statuses')
-      .select(`
-        id, company_id, current_phase_id, next_action, status_summary, last_meeting_date, updated_at, created_at,
-        companies (id, name, tier, expected_revenue, sku_count, assigned_to, created_at, updated_at),
-        sales_phases:current_phase_id (id, phase_name, phase_order, description, created_at)
-      `)
+      .from('deals')
+      .select('*, contact:contacts(*)')
       .eq('id', id)
       .single();
 
@@ -58,22 +67,31 @@ export async function GET(
       );
     }
 
-    const company = Array.isArray(data.companies) ? data.companies[0] : data.companies;
-    const phase = Array.isArray(data.sales_phases) ? data.sales_phases[0] : data.sales_phases;
-
-    const deal: DealWithDetails = {
-      deal_status: {
-        id: data.id,
-        company_id: data.company_id,
-        current_phase_id: data.current_phase_id,
-        next_action: data.next_action,
-        status_summary: data.status_summary,
-        last_meeting_date: data.last_meeting_date,
-        updated_at: data.updated_at,
-        created_at: data.created_at,
-      },
-      company: company as DealWithDetails['company'],
-      phase: phase as DealWithDetails['phase'],
+    const contact = Array.isArray(data.contact) ? data.contact[0] : data.contact;
+    const deal: DealWithContact = {
+      id: data.id,
+      contact_id: data.contact_id,
+      title: data.title,
+      phase: data.phase,
+      probability: data.probability,
+      next_action: data.next_action,
+      next_action_date: data.next_action_date,
+      assigned_to: data.assigned_to,
+      note: data.note,
+      deliverable: data.deliverable ?? null,
+      industry: data.industry ?? null,
+      deadline: data.deadline ?? null,
+      revenue: data.revenue ?? null,
+      target_country: data.target_country ?? null,
+      tax_type: data.tax_type ?? null,
+      has_movement: data.has_movement ?? false,
+      status_detail: data.status_detail ?? null,
+      billing_month: data.billing_month ?? null,
+      client_contact_name: data.client_contact_name ?? null,
+      revenue_note: data.revenue_note ?? null,
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+      contact: contact ?? null,
     };
 
     return NextResponse.json({ data: deal, error: null });
@@ -87,22 +105,18 @@ export async function GET(
 }
 
 // ---------------------------------------------------------------------------
-// PATCH /api/deals/[id] - 案件ステータス手動更新
+// PATCH /api/deals/[id] - 案件更新
 // ---------------------------------------------------------------------------
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<ApiResult<DealWithDetails>>> {
+): Promise<NextResponse<ApiResult<DealWithContact>>> {
   const contentTypeError = validateContentType(request);
-  if (contentTypeError) return contentTypeError as NextResponse<ApiResult<DealWithDetails>>;
+  if (contentTypeError) return contentTypeError as NextResponse<ApiResult<DealWithContact>>;
 
-  const authResult2 = await validateAuth(request);
-  if (isAuthError(authResult2)) return authResult2 as NextResponse<ApiResult<DealWithDetails>>;
-
-  // ロールチェック: admin または manager のみ案件更新可能
-  const roleError = requireRole(authResult2, ['admin', 'manager']);
-  if (roleError) return roleError as NextResponse<ApiResult<DealWithDetails>>;
+  const auth = await validateAuth(request);
+  if (isAuthError(auth)) return auth as NextResponse<ApiResult<DealWithContact>>;
 
   try {
     const { id } = await params;
@@ -112,40 +126,56 @@ export async function PATCH(
         { status: 400 }
       );
     }
+
     const body: unknown = await request.json();
-    const parsed = updateDealStatusSchema.safeParse(body);
+    const parsed = updateDealSchema.safeParse(body);
 
     if (!parsed.success) {
       return NextResponse.json(
-        { data: null, error: `入力値が不正です: ${parsed.error.issues.map((e: { message: string }) => e.message).join(', ')}` },
+        { data: null, error: `入力値が不正です: ${parsed.error.issues.map((e) => e.message).join(', ')}` },
         { status: 400 }
       );
     }
 
     const supabase = createServerSupabaseClient();
 
-    // Prototype Pollution 防止: zodでバリデーション済みのプロパティのみ明示的に展開
-    const { current_phase_id, next_action, status_summary, last_meeting_date } = parsed.data;
+    const {
+      contact_id, title, phase, probability, next_action, next_action_date,
+      assigned_to, note, deliverable, industry, deadline, revenue,
+      target_country, tax_type, has_movement, status_detail, billing_month,
+      client_contact_name, revenue_note,
+    } = parsed.data;
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
-    if (current_phase_id !== undefined) updateData.current_phase_id = current_phase_id;
+    if (contact_id !== undefined) updateData.contact_id = contact_id;
+    if (title !== undefined) updateData.title = title;
+    if (phase !== undefined) updateData.phase = phase;
+    if (probability !== undefined) updateData.probability = probability;
     if (next_action !== undefined) updateData.next_action = next_action;
-    if (status_summary !== undefined) updateData.status_summary = status_summary;
-    if (last_meeting_date !== undefined) updateData.last_meeting_date = last_meeting_date;
+    if (next_action_date !== undefined) updateData.next_action_date = next_action_date;
+    if (assigned_to !== undefined) updateData.assigned_to = assigned_to;
+    if (note !== undefined) updateData.note = note;
+    if (deliverable !== undefined) updateData.deliverable = deliverable;
+    if (industry !== undefined) updateData.industry = industry;
+    if (deadline !== undefined) updateData.deadline = deadline;
+    if (revenue !== undefined) updateData.revenue = revenue;
+    if (target_country !== undefined) updateData.target_country = target_country;
+    if (tax_type !== undefined) updateData.tax_type = tax_type;
+    if (has_movement !== undefined) updateData.has_movement = has_movement;
+    if (status_detail !== undefined) updateData.status_detail = status_detail;
+    if (billing_month !== undefined) updateData.billing_month = billing_month;
+    if (client_contact_name !== undefined) updateData.client_contact_name = client_contact_name;
+    if (revenue_note !== undefined) updateData.revenue_note = revenue_note;
 
-    const { data: updated, error } = await supabase
-      .from('deal_statuses')
+    const { data, error } = await supabase
+      .from('deals')
       .update(updateData)
       .eq('id', id)
-      .select(`
-        id, company_id, current_phase_id, next_action, status_summary, last_meeting_date, updated_at, created_at,
-        companies (id, name, tier, expected_revenue, sku_count, assigned_to, created_at, updated_at),
-        sales_phases:current_phase_id (id, phase_name, phase_order, description, created_at)
-      `)
+      .select('*, contact:contacts(*)')
       .single();
 
-    if (error || !updated) {
+    if (error || !data) {
       console.error('案件の更新に失敗しました:', error?.message);
       return NextResponse.json(
         { data: null, error: '案件の更新に失敗しました' },
@@ -153,30 +183,32 @@ export async function PATCH(
       );
     }
 
-    const updatedCompany = Array.isArray(updated.companies) ? updated.companies[0] : updated.companies;
-    const updatedPhase = Array.isArray(updated.sales_phases) ? updated.sales_phases[0] : updated.sales_phases;
-
-    const deal: DealWithDetails = {
-      deal_status: {
-        id: updated.id,
-        company_id: updated.company_id,
-        current_phase_id: updated.current_phase_id,
-        next_action: updated.next_action,
-        status_summary: updated.status_summary,
-        last_meeting_date: updated.last_meeting_date,
-        updated_at: updated.updated_at,
-        created_at: updated.created_at,
-      },
-      company: updatedCompany as DealWithDetails['company'],
-      phase: updatedPhase as DealWithDetails['phase'],
+    const contact = Array.isArray(data.contact) ? data.contact[0] : data.contact;
+    const deal: DealWithContact = {
+      id: data.id,
+      contact_id: data.contact_id,
+      title: data.title,
+      phase: data.phase,
+      probability: data.probability,
+      next_action: data.next_action,
+      next_action_date: data.next_action_date,
+      assigned_to: data.assigned_to,
+      note: data.note,
+      deliverable: data.deliverable ?? null,
+      industry: data.industry ?? null,
+      deadline: data.deadline ?? null,
+      revenue: data.revenue ?? null,
+      target_country: data.target_country ?? null,
+      tax_type: data.tax_type ?? null,
+      has_movement: data.has_movement ?? false,
+      status_detail: data.status_detail ?? null,
+      billing_month: data.billing_month ?? null,
+      client_contact_name: data.client_contact_name ?? null,
+      revenue_note: data.revenue_note ?? null,
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+      contact: contact ?? null,
     };
-
-    // スプレッドシート同期（非同期、失敗しても案件更新には影響しない）
-    if (GOOGLE_SHEET_ID) {
-      syncAllToSheet(GOOGLE_SHEET_ID).catch((e) => {
-        console.error('スプレッドシート同期失敗:', e instanceof Error ? e.message : e);
-      });
-    }
 
     return NextResponse.json({ data: deal, error: null });
   } catch (err) {

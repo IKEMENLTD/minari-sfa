@@ -1,0 +1,121 @@
+import { TLDV_API_TIMEOUT_MS } from '@/lib/constants';
+import type { TldvMeeting, TldvTranscript } from '@/types';
+
+// ---------------------------------------------------------------------------
+// TLDV API クライアント
+// Base URL: https://pasta.tldv.io
+// API Version: v1alpha1
+// Auth: x-api-key header
+// Docs: https://doc.tldv.io/index.html
+// ---------------------------------------------------------------------------
+
+const TLDV_BASE_URL = 'https://pasta.tldv.io/v1alpha1';
+
+function getApiKey(): string {
+  const key = process.env.TLDV_API_KEY;
+  if (!key) {
+    throw new Error('環境変数 TLDV_API_KEY が設定されていません');
+  }
+  return key;
+}
+
+async function tldvFetch(path: string, signal?: AbortSignal): Promise<Response> {
+  const response = await fetch(`${TLDV_BASE_URL}${path}`, {
+    headers: {
+      'x-api-key': getApiKey(),
+      'Content-Type': 'application/json',
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    console.error(`TLDV API エラー (${response.status}):`, body);
+    throw new Error(`TLDV API エラー (${response.status})`);
+  }
+
+  return response;
+}
+
+/**
+ * TLDV APIから会議一覧を取得する
+ * ページネーション対応
+ */
+export async function fetchMeetings(
+  options?: { pageSize?: number; page?: number }
+): Promise<TldvMeeting[]> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TLDV_API_TIMEOUT_MS);
+
+  try {
+    const params = new URLSearchParams();
+    if (options?.pageSize) params.set('pageSize', String(options.pageSize));
+    if (options?.page) params.set('page', String(options.page));
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const response = await tldvFetch(`/meetings${query}`, controller.signal);
+    const data = await response.json();
+
+    // TLDVのレスポンス形式に合わせてマッピング
+    const meetings = Array.isArray(data) ? data : (data.results ?? data.meetings ?? []);
+
+    return meetings.map((m: Record<string, unknown>) => ({
+      id: String(m.id ?? ''),
+      title: String(m.title ?? m.name ?? ''),
+      date: String(m.date ?? m.happened_at ?? m.created_at ?? ''),
+      duration: typeof m.duration === 'number' ? m.duration : null,
+      participants: Array.isArray(m.participants)
+        ? m.participants.map((p: Record<string, unknown>) =>
+            typeof p === 'string' ? p : String(p.name ?? p.email ?? ''))
+        : [],
+    }));
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * TLDV APIから特定の会議の文字起こしを取得する
+ */
+export async function fetchTranscript(meetingId: string): Promise<TldvTranscript> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TLDV_API_TIMEOUT_MS);
+
+  try {
+    const response = await tldvFetch(`/meetings/${meetingId}/transcript`, controller.signal);
+    const data = await response.json();
+
+    // 文字起こしのテキストを結合
+    let text: string;
+    if (typeof data === 'string') {
+      text = data;
+    } else if (typeof data.text === 'string') {
+      text = data.text;
+    } else if (Array.isArray(data.segments ?? data.entries)) {
+      const segments = data.segments ?? data.entries;
+      text = segments
+        .map((s: Record<string, unknown>) => {
+          const speaker = s.speaker_name ?? s.speaker ?? '';
+          const content = s.text ?? s.content ?? '';
+          return speaker ? `${speaker}: ${content}` : String(content);
+        })
+        .join('\n');
+    } else {
+      text = JSON.stringify(data);
+    }
+
+    return { meeting_id: meetingId, text };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * TLDV APIから新規会議を取得し、既存のsource_idと比較して未取り込みのものを返す
+ */
+export async function fetchNewMeetings(
+  existingSourceIds: Set<string>
+): Promise<TldvMeeting[]> {
+  const meetings = await fetchMeetings({ pageSize: 50 });
+  return meetings.filter((m) => !existingSourceIds.has(m.id));
+}

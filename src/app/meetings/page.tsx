@@ -2,39 +2,66 @@
 
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { MeetingList } from '@/components/meetings/meeting-list';
-import { Select } from '@/components/ui/select';
+import Link from 'next/link';
+import { AlertCircle, Search } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle } from 'lucide-react';
-import type { MeetingRow } from '@/types';
+import {
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableHeader,
+} from '@/components/ui/table';
+import { TOOL_LABEL } from '@/lib/constants';
+import type { MeetingRow, ContactRow, MeetingTool } from '@/types';
 
-type FilterStatus = '' | 'pending' | 'approved' | 'rejected';
+interface MeetingListItem extends MeetingRow {
+  contact: ContactRow | null;
+  summary_text?: string | null;
+}
 
-const statusOptions = [
+type UnlinkedFilter = '' | 'true';
+
+const FILTER_TABS: { value: UnlinkedFilter; label: string }[] = [
   { value: '', label: '全て' },
-  { value: 'pending', label: '承認待ち' },
-  { value: 'approved', label: '承認済み' },
-  { value: 'rejected', label: '却下' },
+  { value: 'true', label: '未紐付け' },
 ];
+
+const PAGE_SIZE = 50;
+
+const SOURCE_LABEL: Record<string, string> = {
+  tldv: 'tl;dv',
+  teams_copilot: 'Teams Copilot',
+  manual: '手動',
+};
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max) + '...';
+}
 
 function MeetingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [meetings, setMeetings] = useState<MeetingRow[]>([]);
+  const [meetings, setMeetings] = useState<MeetingListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>(
-    (searchParams.get('approval_status') as FilterStatus) ?? ''
+  const [total, setTotal] = useState(0);
+  const [unlinked, setUnlinked] = useState<UnlinkedFilter>(
+    (searchParams.get('unlinked') as UnlinkedFilter) ?? '',
   );
-  const companyId = searchParams.get('company_id') ?? '';
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') ?? '');
+  const [page, setPage] = useState(Number(searchParams.get('page') ?? '1'));
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchMeetings = useCallback(async () => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
+    if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -45,14 +72,28 @@ function MeetingsContent() {
 
     try {
       const params = new URLSearchParams();
-      if (statusFilter) params.set('approval_status', statusFilter);
-      if (companyId) params.set('company_id', companyId);
+      if (unlinked) params.set('unlinked', 'true');
+      if (searchQuery) params.set('search', searchQuery);
+      params.set('page', String(page));
+      params.set('limit', String(PAGE_SIZE));
+
       const res = await fetch(`/api/meetings?${params.toString()}`, {
         signal: controller.signal,
       });
       if (!res.ok) throw new Error('データの取得に失敗しました');
-      const json: { data: MeetingRow[] } = await res.json();
-      setMeetings(json.data);
+      const json: { data: MeetingListItem[]; total?: number } = await res.json();
+
+      // クライアントサイドでコンタクト名フィルタ（APIにsearchがなくても対応）
+      let filtered = json.data;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter(
+          (m) => m.contact?.full_name?.toLowerCase().includes(q)
+        );
+      }
+
+      setMeetings(filtered);
+      setTotal(json.total ?? json.data.length);
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
         setError('タイムアウトしました。再試行してください。');
@@ -63,57 +104,87 @@ function MeetingsContent() {
       clearTimeout(timeoutId);
       setLoading(false);
     }
-  }, [statusFilter, companyId]);
+  }, [unlinked, searchQuery, page]);
 
   useEffect(() => {
     fetchMeetings();
-    return () => {
-      abortRef.current?.abort();
-    };
+    return () => { abortRef.current?.abort(); };
   }, [fetchMeetings]);
 
-  const handleStatusChange = (value: FilterStatus) => {
-    setStatusFilter(value);
-    const params = new URLSearchParams(searchParams.toString());
-    if (value) {
-      params.set('approval_status', value);
-    } else {
-      params.delete('approval_status');
-    }
+  const updateUrl = (newUnlinked: UnlinkedFilter, newSearch: string, newPage: number) => {
+    const params = new URLSearchParams();
+    if (newUnlinked) params.set('unlinked', newUnlinked);
+    if (newSearch) params.set('search', newSearch);
+    if (newPage > 1) params.set('page', String(newPage));
     router.replace(`/meetings?${params.toString()}`);
   };
+
+  const handleFilterChange = (value: UnlinkedFilter) => {
+    setUnlinked(value);
+    setPage(1);
+    updateUrl(value, searchQuery, 1);
+  };
+
+  const handleSearch = () => {
+    setPage(1);
+    updateUrl(unlinked, searchQuery, 1);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    updateUrl(unlinked, searchQuery, newPage);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-text">商談記録</h1>
-          {companyId && (
-            <p className="mt-0.5 text-xs text-text-secondary">
-              企業でフィルタ中
-              <button
-                type="button"
-                onClick={() => router.replace('/meetings')}
-                className="ml-2 text-accent hover:underline"
-              >
-                解除
-              </button>
-            </p>
-          )}
-        </div>
-        <div data-guide="filter-select" className="w-full sm:w-48">
-          <Select
-            options={statusOptions}
-            value={statusFilter}
-            onChange={(e) => handleStatusChange(e.target.value as FilterStatus)}
-            placeholder="ステータスで絞り込み"
+        <h1 className="text-xl font-semibold text-text">会議記録</h1>
+        <Link
+          href="/meetings/new"
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-all"
+        >
+          会議を登録
+        </Link>
+      </div>
+
+      {/* コンタクト名検索 */}
+      <div className="flex gap-2">
+        <div className="flex-1 max-w-xs">
+          <Input
+            placeholder="コンタクト名で検索..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
         </div>
+        <Button variant="secondary" size="sm" onClick={handleSearch}>
+          <Search className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* フィルタータブ */}
+      <div className="flex flex-wrap gap-2">
+        {FILTER_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => handleFilterChange(tab.value)}
+            className={`px-3 py-1.5 text-sm font-medium rounded-md border transition-colors ${
+              unlinked === tab.value
+                ? 'bg-accent/20 text-accent border-accent/30'
+                : 'bg-surface text-text-secondary border-border hover:bg-muted'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {error && (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             <AlertCircle className="h-4 w-4 shrink-0" />
             {error}
           </div>
@@ -131,8 +202,106 @@ function MeetingsContent() {
             <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
+      ) : meetings.length === 0 ? (
+        <div className="py-16 text-center text-sm text-text-secondary">
+          会議記録はありません
+        </div>
       ) : (
-        <MeetingList meetings={meetings} />
+        <>
+          {/* モバイル */}
+          <div className="sm:hidden space-y-2">
+            {meetings.map((m) => (
+              <Link
+                key={m.id}
+                href={`/meetings/${m.id}`}
+                className="block border border-border bg-surface p-3 hover:bg-muted/50"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm text-accent">
+                    {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {m.tool && <Badge variant="info">{TOOL_LABEL[m.tool] ?? m.tool}</Badge>}
+                    {!m.contact_id && <Badge variant="warning">未紐付け</Badge>}
+                  </div>
+                </div>
+                <p className="text-sm text-text">{m.contact?.full_name ?? '未紐付け'}</p>
+                {m.summary_text && (
+                  <p className="text-xs text-text-secondary mt-1 truncate">{truncate(m.summary_text, 60)}</p>
+                )}
+              </Link>
+            ))}
+          </div>
+
+          {/* デスクトップ */}
+          <div className="hidden sm:block">
+            <Card>
+              <Table>
+                <TableHead>
+                  <tr>
+                    <TableHeader>日時</TableHeader>
+                    <TableHeader>コンタクト</TableHeader>
+                    <TableHeader>ツール</TableHeader>
+                    <TableHeader>ソース</TableHeader>
+                    <TableHeader>要約</TableHeader>
+                  </tr>
+                </TableHead>
+                <TableBody>
+                  {meetings.map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell>
+                        <Link href={`/meetings/${m.id}`} className="text-accent hover:underline">
+                          {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        {m.contact ? (
+                          m.contact.full_name
+                        ) : (
+                          <Badge variant="warning">未紐付け</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {m.tool ? <Badge variant="info">{TOOL_LABEL[m.tool] ?? m.tool}</Badge> : '-'}
+                      </TableCell>
+                      <TableCell>{SOURCE_LABEL[m.source] ?? m.source}</TableCell>
+                      <TableCell>
+                        <span className="truncate max-w-[250px] inline-block text-text-secondary">
+                          {m.summary_text ? truncate(m.summary_text, 80) : '-'}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          </div>
+
+          {/* ページネーション */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => handlePageChange(page - 1)}
+              >
+                前へ
+              </Button>
+              <span className="text-sm text-text-secondary">
+                {page} / {totalPages}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() => handlePageChange(page + 1)}
+              >
+                次へ
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -140,16 +309,18 @@ function MeetingsContent() {
 
 export default function MeetingsPage() {
   return (
-    <Suspense fallback={
-      <div className="space-y-6">
-        <h1 className="text-xl font-semibold text-text">商談記録</h1>
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
-          ))}
+    <Suspense
+      fallback={
+        <div className="space-y-6">
+          <h1 className="text-xl font-semibold text-text">会議記録</h1>
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
         </div>
-      </div>
-    }>
+      }
+    >
       <MeetingsContent />
     </Suspense>
   );

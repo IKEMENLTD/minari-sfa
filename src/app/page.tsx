@@ -3,15 +3,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import {
-  CheckCircle,
-  Briefcase,
-  MessageSquare,
-  RefreshCw,
   AlertCircle,
   ArrowRight,
+  Calendar,
+  Briefcase,
+  MessageSquare,
+  Clock,
+  FileText,
+  Play,
 } from 'lucide-react';
-import WelcomeModal from '@/components/guide/welcome-modal';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,49 +24,69 @@ import {
   TableHeader,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { MeetingRow, DealWithDetails } from '@/types';
-import type { BadgeVariant } from '@/components/ui/badge';
+import { PHASE_LABEL, TOOL_LABEL } from '@/lib/constants';
+import type { DealPhase, MeetingTool } from '@/types';
+
+interface ReminderItem {
+  id: string;
+  title: string;
+  contact_name: string;
+  company_name: string | null;
+  next_action: string | null;
+  next_action_date: string | null;
+  phase: DealPhase;
+}
+
+interface PhaseSummaryItem {
+  phase: DealPhase;
+  count: number;
+}
+
+interface RecentMeetingItem {
+  id: string;
+  contact_name: string | null;
+  meeting_date: string;
+  tool: MeetingTool | null;
+}
+
+interface InquiryMonthlySummaryItem {
+  month: string;
+  total: number;
+}
 
 interface DashboardData {
-  pendingCount: number;
-  activeDealsCount: number;
-  weeklyMeetingsCount: number;
-  recentPending: MeetingRow[];
-  recentDeals: DealWithDetails[];
+  reminders: ReminderItem[];
+  phaseSummary: PhaseSummaryItem[];
+  recentMeetings: RecentMeetingItem[];
+  unhandledInquiries: number;
+  inquiryMonthly: InquiryMonthlySummaryItem[];
 }
 
-const statusVariant: Record<string, BadgeVariant> = {
-  pending: 'warning',
-  approved: 'success',
-  rejected: 'danger',
+function isOverdue(dateStr: string): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr);
+  d.setHours(0, 0, 0, 0);
+  return d < today;
+}
+
+function isToday(dateStr: string): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime() === today.getTime();
+}
+
+const PHASE_ORDER: DealPhase[] = ['proposal_planned', 'proposal_active', 'waiting', 'follow_up', 'active'];
+
+const PHASE_ICONS: Record<DealPhase, typeof Briefcase> = {
+  proposal_planned: Calendar,
+  proposal_active: Briefcase,
+  waiting: Clock,
+  follow_up: MessageSquare,
+  active: Play,
 };
-
-interface SummaryCardProps {
-  icon: typeof CheckCircle;
-  label: string;
-  value: number | string;
-  loading: boolean;
-}
-
-function SummaryCard({ icon: Icon, label, value, loading }: SummaryCardProps) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-4 py-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
-          <Icon className="h-5 w-5 text-text-secondary" />
-        </div>
-        <div>
-          <p className="text-xs font-medium text-text-secondary">{label}</p>
-          {loading ? (
-            <Skeleton className="mt-1 h-6 w-12" />
-          ) : (
-            <p className="text-xl font-semibold text-text">{value}</p>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -74,9 +95,7 @@ export default function DashboardPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async () => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
+    if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -86,34 +105,10 @@ export default function DashboardPage() {
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const [meetingsRes, dealsRes] = await Promise.all([
-        fetch('/api/meetings', { signal: controller.signal }),
-        fetch('/api/deals', { signal: controller.signal }),
-      ]);
-      if (!meetingsRes.ok || !dealsRes.ok) {
-        throw new Error('データの取得に失敗しました');
-      }
-      const meetingsJson: { data: MeetingRow[] } = await meetingsRes.json();
-      const dealsJson: { data: DealWithDetails[] } = await dealsRes.json();
-
-      const meetings = meetingsJson.data;
-      const deals = dealsJson.data;
-
-      const now = new Date();
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-      const pending = meetings.filter((m) => m.approval_status === 'pending');
-      const weeklyMeetings = meetings.filter(
-        (m) => new Date(m.meeting_date) >= weekAgo,
-      );
-
-      setData({
-        pendingCount: pending.length,
-        activeDealsCount: deals.length,
-        weeklyMeetingsCount: weeklyMeetings.length,
-        recentPending: pending.slice(0, 5),
-        recentDeals: deals.slice(0, 5),
-      });
+      const res = await fetch('/api/dashboard', { signal: controller.signal });
+      if (!res.ok) throw new Error('データの取得に失敗しました');
+      const json: { data: DashboardData } = await res.json();
+      setData(json.data);
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
         setError('タイムアウトしました。再試行してください。');
@@ -128,19 +123,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData();
-    return () => {
-      abortRef.current?.abort();
-    };
+    return () => { abortRef.current?.abort(); };
   }, [fetchData]);
 
   return (
     <div className="space-y-6 overflow-x-hidden">
-      <WelcomeModal />
       <h1 className="text-xl font-semibold text-text">ホーム</h1>
 
       {error && (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             <AlertCircle className="h-4 w-4 shrink-0" />
             {error}
           </div>
@@ -152,55 +144,78 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* サマリーカード */}
-      <div data-guide="summary-cards" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard
-          icon={CheckCircle}
-          label="承認待ち"
-          value={data?.pendingCount ?? 0}
-          loading={loading}
-        />
-        <SummaryCard
-          icon={Briefcase}
-          label="進行中の案件"
-          value={data?.activeDealsCount ?? 0}
-          loading={loading}
-        />
-        <SummaryCard
-          icon={MessageSquare}
-          label="今週の商談"
-          value={data?.weeklyMeetingsCount ?? 0}
-          loading={loading}
-        />
-        <SummaryCard
-          icon={RefreshCw}
-          label="直近更新"
-          value={data?.recentDeals.length ?? 0}
-          loading={loading}
-        />
+      {/* フェーズ別案件サマリー */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {PHASE_ORDER.map((phase) => {
+          const Icon = PHASE_ICONS[phase];
+          const count = data?.phaseSummary.find((s) => s.phase === phase)?.count ?? 0;
+          return (
+            <Card key={phase}>
+              <CardContent className="flex items-center gap-4 py-5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+                  <Icon className="h-5 w-5 text-text-secondary" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-text-secondary">{PHASE_LABEL[phase]}</p>
+                  {loading ? (
+                    <Skeleton className="mt-1 h-6 w-12" />
+                  ) : (
+                    <p className="text-xl font-semibold text-text">{count}件</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      {/* 承認待ち商談 */}
-      <div data-guide="pending-section">
+      {/* 未対応問い合わせ + 月別件数 */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Card>
+          <CardContent className="flex items-center gap-4 py-5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+              <FileText className="h-5 w-5 text-text-secondary" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-text-secondary">未対応問い合わせ</p>
+              {loading ? (
+                <Skeleton className="mt-1 h-6 w-12" />
+              ) : (
+                <p className="text-xl font-semibold text-text">{data?.unhandledInquiries ?? 0}件</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        {(data?.inquiryMonthly ?? []).slice(0, 2).map((m) => (
+          <Card key={m.month}>
+            <CardContent className="flex items-center gap-4 py-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+                <MessageSquare className="h-5 w-5 text-text-secondary" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-text-secondary">{m.month} 問い合わせ</p>
+                {loading ? (
+                  <Skeleton className="mt-1 h-6 w-12" />
+                ) : (
+                  <p className="text-xl font-semibold text-text">{m.total}件</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* 本日のリマインド */}
+      <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold text-text">承認待ち商談</h2>
-          {!loading && data && data.pendingCount > 0 ? (
-            <Link
-              href="/approval"
-              className="inline-flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90"
-            >
-              {data.pendingCount}件を承認する
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          ) : (
-            <Link
-              href="/approval"
-              className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
-            >
-              全て見る
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          )}
+          <h2 className="text-base font-semibold text-text">リマインド</h2>
+          <Link
+            href="/deals"
+            className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
+          >
+            案件一覧
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
         </div>
         {loading ? (
           <Card>
@@ -210,45 +225,89 @@ export default function DashboardPage() {
               ))}
             </div>
           </Card>
-        ) : data && data.recentPending.length > 0 ? (
+        ) : data && data.reminders.length > 0 ? (
           <>
-            {/* モバイル: カード */}
+            {/* モバイル */}
             <div className="sm:hidden space-y-2">
-              {data.recentPending.map((m) => (
-                <Link key={m.id} href={`/meetings/${m.id}`} className="block border border-border bg-surface p-3 hover:bg-muted/50">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm text-accent">{new Date(m.meeting_date).toLocaleDateString('ja-JP')}</span>
-                    <Badge variant={statusVariant[m.approval_status] || 'default'}>承認待ち</Badge>
-                  </div>
-                  <p className="text-sm text-text">{m.ai_estimated_company || '-'}</p>
-                </Link>
-              ))}
+              {data.reminders.slice(0, 20).map((r) => {
+                const overdue = r.next_action_date ? isOverdue(r.next_action_date) : false;
+                const today = r.next_action_date ? isToday(r.next_action_date) : false;
+                return (
+                  <Link
+                    key={r.id}
+                    href={`/deals/${r.id}`}
+                    className={`block border p-3 hover:bg-muted/50 ${
+                      overdue
+                        ? 'border-red-500/30 bg-red-500/10'
+                        : today
+                          ? 'border-yellow-500/30 bg-yellow-500/10'
+                          : 'border-border bg-surface'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-accent">{r.title}</span>
+                      <Badge variant={overdue ? 'danger' : today ? 'warning' : 'default'}>
+                        {r.next_action_date ?? '-'}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-text-secondary truncate">
+                      {r.contact_name}{r.company_name ? ` (${r.company_name})` : ''}
+                    </p>
+                    <p className="text-xs text-text truncate mt-0.5">{r.next_action ?? '-'}</p>
+                  </Link>
+                );
+              })}
             </div>
-            {/* デスクトップ: テーブル */}
+            {/* デスクトップ */}
             <div className="hidden sm:block">
               <Card>
                 <Table>
                   <TableHead>
                     <tr>
-                      <TableHeader>日付</TableHeader>
-                      <TableHeader>推定企業</TableHeader>
-                      <TableHeader>ソース</TableHeader>
-                      <TableHeader>ステータス</TableHeader>
+                      <TableHeader>案件名</TableHeader>
+                      <TableHeader>コンタクト</TableHeader>
+                      <TableHeader>次アクション</TableHeader>
+                      <TableHeader>期日</TableHeader>
+                      <TableHeader>フェーズ</TableHeader>
                     </tr>
                   </TableHead>
                   <TableBody>
-                    {data.recentPending.map((m) => (
-                      <TableRow key={m.id}>
-                        <TableCell>
-                          <Link href={`/meetings/${m.id}`} className="text-accent hover:underline">
-                            {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
-                          </Link>
-                        </TableCell>
-                        <TableCell>{m.ai_estimated_company || '-'}</TableCell>
-                        <TableCell><Badge variant="info">{m.source}</Badge></TableCell>
-                        <TableCell><Badge variant={statusVariant[m.approval_status] || 'default'}>承認待ち</Badge></TableCell>
-                      </TableRow>
-                    ))}
+                    {data.reminders.slice(0, 20).map((r) => {
+                      const overdue = r.next_action_date ? isOverdue(r.next_action_date) : false;
+                      const today = r.next_action_date ? isToday(r.next_action_date) : false;
+                      return (
+                        <TableRow
+                          key={r.id}
+                          className={
+                            overdue
+                              ? 'bg-red-500/10'
+                              : today
+                                ? 'bg-yellow-500/10'
+                                : ''
+                          }
+                        >
+                          <TableCell>
+                            <Link href={`/deals/${r.id}`} className="text-accent hover:underline font-medium">
+                              {r.title}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            {r.contact_name}{r.company_name ? ` (${r.company_name})` : ''}
+                          </TableCell>
+                          <TableCell>
+                            <span className="truncate max-w-[200px] inline-block">{r.next_action ?? '-'}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className={overdue ? 'text-red-400 font-medium' : today ? 'text-yellow-400 font-medium' : ''}>
+                              {r.next_action_date ?? '-'}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="info">{PHASE_LABEL[r.phase]}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </Card>
@@ -256,17 +315,17 @@ export default function DashboardPage() {
           </>
         ) : (
           <div className="py-8 text-center text-sm text-text-secondary">
-            承認待ちの商談はありません
+            リマインド対象の案件はありません
           </div>
         )}
       </div>
 
-      {/* 注目案件 */}
+      {/* 最近の会議 */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold text-text">注目案件</h2>
+          <h2 className="text-base font-semibold text-text">最近の会議</h2>
           <Link
-            href="/deals"
+            href="/meetings"
             className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
           >
             全て見る
@@ -281,45 +340,43 @@ export default function DashboardPage() {
               ))}
             </div>
           </Card>
-        ) : data && data.recentDeals.length > 0 ? (
+        ) : data && data.recentMeetings.length > 0 ? (
           <>
-            {/* モバイル: カード */}
             <div className="sm:hidden space-y-2">
-              {data.recentDeals.map((d) => (
-                <Link key={d.deal_status.id} href={`/deals/${d.deal_status.id}`} className="block border border-border bg-surface p-3 hover:bg-muted/50">
+              {data.recentMeetings.slice(0, 5).map((m) => (
+                <Link key={m.id} href={`/meetings/${m.id}`} className="block border border-border bg-surface p-3 hover:bg-muted/50">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-accent">{d.company?.name ?? '未登録'}</span>
-                    <Badge variant="info">{d.phase?.phase_name ?? '未設定'}</Badge>
+                    <span className="text-sm text-accent">
+                      {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
+                    </span>
+                    {m.tool && <Badge variant="info">{TOOL_LABEL[m.tool] ?? m.tool}</Badge>}
                   </div>
-                  <p className="text-xs text-text truncate">{d.deal_status.next_action || '-'}</p>
+                  <p className="text-sm text-text">{m.contact_name ?? '未紐付け'}</p>
                 </Link>
               ))}
             </div>
-            {/* デスクトップ: テーブル */}
             <div className="hidden sm:block">
               <Card>
                 <Table>
                   <TableHead>
                     <tr>
-                      <TableHeader>企業名</TableHeader>
-                      <TableHeader>フェーズ</TableHeader>
-                      <TableHeader>ネクストアクション</TableHeader>
-                      <TableHeader>担当者</TableHeader>
+                      <TableHeader>日時</TableHeader>
+                      <TableHeader>コンタクト</TableHeader>
+                      <TableHeader>ツール</TableHeader>
                     </tr>
                   </TableHead>
                   <TableBody>
-                    {data.recentDeals.map((d) => (
-                      <TableRow key={d.deal_status.id}>
+                    {data.recentMeetings.slice(0, 5).map((m) => (
+                      <TableRow key={m.id}>
                         <TableCell>
-                          <Link href={`/deals/${d.deal_status.id}`} className="text-accent hover:underline font-medium">
-                            {d.company?.name ?? '未登録'}
+                          <Link href={`/meetings/${m.id}`} className="text-accent hover:underline">
+                            {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
                           </Link>
                         </TableCell>
-                        <TableCell><Badge variant="info">{d.phase?.phase_name ?? '未設定'}</Badge></TableCell>
+                        <TableCell>{m.contact_name ?? '未紐付け'}</TableCell>
                         <TableCell>
-                          <span className="truncate max-w-[200px] inline-block">{d.deal_status.next_action || '-'}</span>
+                          {m.tool ? <Badge variant="info">{TOOL_LABEL[m.tool] ?? m.tool}</Badge> : '-'}
                         </TableCell>
-                        <TableCell>{d.company?.assigned_to || '-'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -329,7 +386,7 @@ export default function DashboardPage() {
           </>
         ) : (
           <div className="py-8 text-center text-sm text-text-secondary">
-            案件がありません
+            会議記録はありません
           </div>
         )}
       </div>
