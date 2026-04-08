@@ -148,6 +148,16 @@ function ContactsContent() {
     return () => { abortRef.current?.abort(); };
   }, [fetchContacts]);
 
+  // Escキーでモーダル閉じ
+  useEffect(() => {
+    if (!showModal) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowModal(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showModal]);
+
   const updateUrl = (newTier: TierFilter, newSearch: string, newPage: number) => {
     const params = new URLSearchParams();
     if (newTier) params.set('tier', newTier);
@@ -291,8 +301,12 @@ function ContactsContent() {
           ))}
         </div>
       ) : contacts.length === 0 ? (
-        <div className="py-16 text-center text-sm text-text-secondary">
-          コンタクトがありません
+        <div className="py-16 text-center text-sm text-text-secondary space-y-3">
+          <p>コンタクトがまだありません。最初のコンタクトを登録しましょう</p>
+          <Button size="sm" onClick={() => setShowModal(true)}>
+            <Plus className="h-4 w-4" />
+            コンタクトを追加
+          </Button>
         </div>
       ) : (
         <>
@@ -391,85 +405,87 @@ function ContactsContent() {
             aria-hidden="true"
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-surface border border-border rounded-md max-h-[90vh] overflow-y-auto">
+            <div className="w-full max-w-md bg-surface border border-border rounded-md max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true">
               <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <h2 className="text-base font-semibold text-text">コンタクト追加</h2>
                 <button type="button" onClick={() => setShowModal(false)} className="text-text-secondary hover:text-text">
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="px-5 py-4 space-y-4">
-                {createError && (
-                  <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {createError}
+              <form onSubmit={(e) => { e.preventDefault(); handleCreate(); }}>
+                <div className="px-5 py-4 space-y-4">
+                  {createError && (
+                    <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {createError}
+                    </div>
+                  )}
+                  <Input
+                    label="氏名 *"
+                    value={form.full_name}
+                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                    placeholder="山田 太郎"
+                  />
+                  <Input
+                    label="会社名"
+                    value={form.company_name}
+                    onChange={(e) => setForm({ ...form, company_name: e.target.value })}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      label="部署"
+                      value={form.department}
+                      onChange={(e) => setForm({ ...form, department: e.target.value })}
+                    />
+                    <Input
+                      label="役職"
+                      value={form.position}
+                      onChange={(e) => setForm({ ...form, position: e.target.value })}
+                    />
                   </div>
-                )}
-                <Input
-                  label="氏名 *"
-                  value={form.full_name}
-                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                  placeholder="山田 太郎"
-                />
-                <Input
-                  label="会社名"
-                  value={form.company_name}
-                  onChange={(e) => setForm({ ...form, company_name: e.target.value })}
-                />
-                <div className="grid grid-cols-2 gap-3">
                   <Input
-                    label="部署"
-                    value={form.department}
-                    onChange={(e) => setForm({ ...form, department: e.target.value })}
+                    label="メールアドレス"
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
                   />
                   <Input
-                    label="役職"
-                    value={form.position}
-                    onChange={(e) => setForm({ ...form, position: e.target.value })}
+                    label="電話番号"
+                    type="tel"
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   />
-                </div>
-                <Input
-                  label="メールアドレス"
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                />
-                <Input
-                  label="電話番号"
-                  type="tel"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                />
-                <Select
-                  label="ティア"
-                  options={tierOptions}
-                  value={form.tier}
-                  onChange={(e) => setForm({ ...form, tier: e.target.value })}
-                />
-                <Select
-                  label="ソース"
-                  options={sourceOptions}
-                  value={form.source}
-                  onChange={(e) => setForm({ ...form, source: e.target.value })}
-                />
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text">メモ</label>
-                  <textarea
-                    value={form.note}
-                    onChange={(e) => setForm({ ...form, note: e.target.value })}
-                    rows={3}
-                    className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
+                  <Select
+                    label="ティア"
+                    options={tierOptions}
+                    value={form.tier}
+                    onChange={(e) => setForm({ ...form, tier: e.target.value })}
                   />
+                  <Select
+                    label="ソース"
+                    options={sourceOptions}
+                    value={form.source}
+                    onChange={(e) => setForm({ ...form, source: e.target.value })}
+                  />
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-text">メモ</label>
+                    <textarea
+                      value={form.note}
+                      onChange={(e) => setForm({ ...form, note: e.target.value })}
+                      rows={3}
+                      className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setShowModal(false)}>
-                  キャンセル
-                </Button>
-                <Button size="sm" onClick={handleCreate} loading={creating} disabled={creating}>
-                  作成
-                </Button>
-              </div>
+                <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
+                  <Button variant="secondary" size="sm" type="button" onClick={() => setShowModal(false)}>
+                    キャンセル
+                  </Button>
+                  <Button size="sm" type="submit" loading={creating} disabled={creating}>
+                    作成
+                  </Button>
+                </div>
+              </form>
             </div>
           </div>
         </>

@@ -203,8 +203,14 @@ function MeetingsContent() {
           ))}
         </div>
       ) : meetings.length === 0 ? (
-        <div className="py-16 text-center text-sm text-text-secondary">
-          会議記録はありません
+        <div className="py-16 text-center text-sm text-text-secondary space-y-3">
+          <p>会議記録がまだありません。最初の会議を登録しましょう</p>
+          <Link
+            href="/meetings/new"
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-all"
+          >
+            会議を登録
+          </Link>
         </div>
       ) : (
         <>

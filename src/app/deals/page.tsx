@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AlertCircle, ArrowUpDown, ArrowUp, ArrowDown, Plus, X } from 'lucide-react';
+import { formatDateShort } from '@/lib/format';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -194,6 +195,16 @@ function DealsContent() {
     return () => { abortRef.current?.abort(); };
   }, [fetchDeals]);
 
+  // Escキーでモーダル閉じ
+  useEffect(() => {
+    if (!showModal) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowModal(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showModal]);
+
   const handlePhaseChange = (value: DealPhase | '') => {
     setPhase(value);
     setPage(1);
@@ -276,8 +287,12 @@ function DealsContent() {
           ))}
         </div>
       ) : deals.length === 0 ? (
-        <div className="py-16 text-center text-sm text-text-secondary">
-          案件がありません
+        <div className="py-16 text-center text-sm text-text-secondary space-y-3">
+          <p>案件がまだありません。最初の案件を登録しましょう</p>
+          <Button size="sm" onClick={() => { setShowModal(true); fetchContactOptions(); }}>
+            <Plus className="h-4 w-4" />
+            案件を追加
+          </Button>
         </div>
       ) : (
         <>
@@ -307,7 +322,7 @@ function DealsContent() {
                 </p>
                 <div className="flex items-center justify-between mt-1">
                   <span className="text-xs text-text truncate">{d.next_action ?? '-'}</span>
-                  <span className="text-xs text-text-secondary">{d.next_action_date ?? '-'}</span>
+                  <span className="text-xs text-text-secondary">{d.next_action_date ? formatDateShort(d.next_action_date) : '-'}</span>
                 </div>
                 <div className="flex items-center gap-3 mt-1">
                   {d.deliverable && <span className="text-xs text-text-secondary">{d.deliverable}</span>}
@@ -388,8 +403,21 @@ function DealsContent() {
                       </tr>
                     </TableHead>
                     <TableBody>
-                      {deals.map((d) => (
-                        <TableRow key={d.id}>
+                      {deals.map((d) => {
+                        const todayStr = new Date().toISOString().split('T')[0];
+                        const rowOverdue = d.next_action_date != null && d.next_action_date < todayStr;
+                        const rowToday = d.next_action_date === todayStr;
+                        return (
+                        <TableRow
+                          key={d.id}
+                          className={
+                            rowOverdue
+                              ? 'bg-red-500/5'
+                              : rowToday
+                                ? 'bg-yellow-500/5'
+                                : ''
+                          }
+                        >
                           <TableCell>
                             <Link href={`/deals/${d.id}`} className="text-accent hover:underline font-medium">
                               {d.has_movement && (
@@ -416,10 +444,11 @@ function DealsContent() {
                           <TableCell>
                             <span className="truncate max-w-[200px] inline-block">{d.next_action ?? '-'}</span>
                           </TableCell>
-                          <TableCell>{d.next_action_date ?? '-'}</TableCell>
+                          <TableCell>{d.next_action_date ? formatDateShort(d.next_action_date) : '-'}</TableCell>
                           <TableCell>{d.assigned_to ?? '-'}</TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </>
                 )}
@@ -462,60 +491,62 @@ function DealsContent() {
             aria-hidden="true"
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-surface border border-border rounded-md max-h-[90vh] overflow-y-auto">
+            <div className="w-full max-w-md bg-surface border border-border rounded-md max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true">
               <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <h2 className="text-base font-semibold text-text">案件を追加</h2>
                 <button type="button" onClick={() => setShowModal(false)} className="text-text-secondary hover:text-text">
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="px-5 py-4 space-y-4">
-                {createError && (
-                  <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {createError}
-                  </div>
-                )}
-                <Input
-                  label="タイトル *"
-                  value={createTitle}
-                  onChange={(e) => setCreateTitle(e.target.value)}
-                  placeholder="案件タイトル"
-                />
-                <Select
-                  label="コンタクト *"
-                  options={contactOptions}
-                  value={createContactId}
-                  onChange={(e) => setCreateContactId(e.target.value)}
-                  placeholder="コンタクトを選択..."
-                />
-                <Select
-                  label="フェーズ"
-                  options={phaseOptions}
-                  value={createPhase}
-                  onChange={(e) => setCreatePhase(e.target.value as DealPhase)}
-                />
-                <Input
-                  label="次アクション"
-                  value={createNextAction}
-                  onChange={(e) => setCreateNextAction(e.target.value)}
-                  placeholder="次にやること"
-                />
-                <Input
-                  label="次アクション日"
-                  type="date"
-                  value={createNextActionDate}
-                  onChange={(e) => setCreateNextActionDate(e.target.value)}
-                />
-              </div>
-              <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setShowModal(false)}>
-                  キャンセル
-                </Button>
-                <Button size="sm" onClick={handleCreate} loading={creating} disabled={creating}>
-                  作成
-                </Button>
-              </div>
+              <form onSubmit={(e) => { e.preventDefault(); handleCreate(); }}>
+                <div className="px-5 py-4 space-y-4">
+                  {createError && (
+                    <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {createError}
+                    </div>
+                  )}
+                  <Input
+                    label="タイトル *"
+                    value={createTitle}
+                    onChange={(e) => setCreateTitle(e.target.value)}
+                    placeholder="案件タイトル"
+                  />
+                  <Select
+                    label="コンタクト *"
+                    options={contactOptions}
+                    value={createContactId}
+                    onChange={(e) => setCreateContactId(e.target.value)}
+                    placeholder="コンタクトを選択..."
+                  />
+                  <Select
+                    label="フェーズ"
+                    options={phaseOptions}
+                    value={createPhase}
+                    onChange={(e) => setCreatePhase(e.target.value as DealPhase)}
+                  />
+                  <Input
+                    label="次アクション"
+                    value={createNextAction}
+                    onChange={(e) => setCreateNextAction(e.target.value)}
+                    placeholder="次にやること"
+                  />
+                  <Input
+                    label="次アクション日"
+                    type="date"
+                    value={createNextActionDate}
+                    onChange={(e) => setCreateNextActionDate(e.target.value)}
+                  />
+                </div>
+                <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
+                  <Button variant="secondary" size="sm" type="button" onClick={() => setShowModal(false)}>
+                    キャンセル
+                  </Button>
+                  <Button size="sm" type="submit" loading={creating} disabled={creating}>
+                    作成
+                  </Button>
+                </div>
+              </form>
             </div>
           </div>
         </>

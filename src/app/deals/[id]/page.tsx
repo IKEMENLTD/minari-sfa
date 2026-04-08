@@ -198,7 +198,7 @@ export default function DealDetailPage() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [isDirty]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!id) return;
     setSaving(true);
     setSaveMsg(null);
@@ -243,7 +243,19 @@ export default function DealDetailPage() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [id, phase, probability, nextAction, nextActionDate, note, deliverable, industry, deadline, revenue, targetCountry, taxType, hasMovement, statusDetail, billingMonth, clientContactName, revenueNote, fetchDeal]);
+
+  // Ctrl+S / Cmd+S で保存
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleSave]);
 
   const meetingsTotalPages = Math.max(1, Math.ceil(meetingsTotal / MEETINGS_PAGE_SIZE));
 

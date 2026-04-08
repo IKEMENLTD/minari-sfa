@@ -25,6 +25,7 @@ import {
   PROBABILITY_LABEL,
   PROBABILITY_COLOR,
 } from '@/lib/constants';
+import { formatDateShort } from '@/lib/format';
 import type {
   ContactRow,
   MeetingRow,
@@ -153,7 +154,7 @@ export default function ContactDetailPage() {
   useEffect(() => { fetchMeetings(); }, [fetchMeetings]);
   useEffect(() => { fetchDeals(); }, [fetchDeals]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!id) return;
     setSaving(true);
     setSaveMsg(null);
@@ -189,7 +190,19 @@ export default function ContactDetailPage() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [id, fullName, companyName, department, position, email, phone, tier, note, fetchContact]);
+
+  // Ctrl+S / Cmd+S で保存
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleSave]);
 
   const meetingsTotalPages = Math.max(1, Math.ceil(meetingsTotal / MEETINGS_PAGE_SIZE));
 
@@ -270,18 +283,32 @@ export default function ContactDetailPage() {
                 />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="メールアドレス"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-                <Input
-                  label="電話番号"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
+                <div className="space-y-1">
+                  <Input
+                    label="メールアドレス"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                  {email && (
+                    <a href={`mailto:${email}`} className="text-xs text-accent hover:underline">
+                      メール送信
+                    </a>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Input
+                    label="電話番号"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                  {phone && (
+                    <a href={`tel:${phone}`} className="text-xs text-accent hover:underline">
+                      電話する
+                    </a>
+                  )}
+                </div>
               </div>
               <Select
                 label="ティア"
@@ -361,7 +388,7 @@ export default function ContactDetailPage() {
                           <span className="truncate max-w-[150px] inline-block">{d.deliverable ?? '-'}</span>
                         </TableCell>
                         <TableCell>{d.revenue != null ? `${d.revenue.toLocaleString()}円` : '-'}</TableCell>
-                        <TableCell>{d.next_action_date ?? '-'}</TableCell>
+                        <TableCell>{d.next_action_date ? formatDateShort(d.next_action_date) : '-'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

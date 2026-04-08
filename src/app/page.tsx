@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PHASE_LABEL, TOOL_LABEL } from '@/lib/constants';
+import { formatDateShort } from '@/lib/format';
 import type { DealPhase, MeetingTool } from '@/types';
 
 interface ReminderItem {
@@ -251,7 +252,7 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-medium text-accent">{r.title}</span>
                       <Badge variant={overdue ? 'danger' : today ? 'warning' : 'default'}>
-                        {r.next_action_date ?? '-'}
+                        {r.next_action_date ? formatDateShort(r.next_action_date) : '-'}
                       </Badge>
                     </div>
                     <p className="text-xs text-text-secondary truncate">
@@ -303,7 +304,7 @@ export default function DashboardPage() {
                           </TableCell>
                           <TableCell>
                             <span className={overdue ? 'text-red-400 font-medium' : today ? 'text-yellow-400 font-medium' : ''}>
-                              {r.next_action_date ?? '-'}
+                              {r.next_action_date ? formatDateShort(r.next_action_date) : '-'}
                             </span>
                           </TableCell>
                           <TableCell>

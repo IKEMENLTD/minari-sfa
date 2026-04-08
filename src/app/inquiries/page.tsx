@@ -113,6 +113,9 @@ function InquiriesContent() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  // クイック変更の連打防止
+  const [quickChangingIds, setQuickChangingIds] = useState<Set<string>>(new Set());
+
   const fetchInquiries = useCallback(async () => {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
@@ -162,6 +165,19 @@ function InquiriesContent() {
     fetchInquiries();
     return () => { abortRef.current?.abort(); };
   }, [fetchInquiries]);
+
+  // Escキーでモーダル閉じ
+  useEffect(() => {
+    if (!showModal && !editTarget) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (editTarget) setEditTarget(null);
+        else if (showModal) setShowModal(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showModal, editTarget]);
 
   // コンタクト一覧を取得（紐付け用）
   const fetchContactOptions = useCallback(async () => {
@@ -218,6 +234,8 @@ function InquiriesContent() {
   };
 
   const handleStatusQuickChange = async (inq: InquiryRow, newStatus: InquiryStatus) => {
+    if (quickChangingIds.has(inq.id)) return;
+    setQuickChangingIds((prev) => new Set(prev).add(inq.id));
     try {
       const res = await fetch(`/api/inquiries/${inq.id}`, {
         method: 'PATCH',
@@ -229,6 +247,12 @@ function InquiriesContent() {
       }
     } catch (e) {
       console.error('ステータス変更に失敗しました:', e);
+    } finally {
+      setQuickChangingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(inq.id);
+        return next;
+      });
     }
   };
 
@@ -418,8 +442,12 @@ function InquiriesContent() {
           ))}
         </div>
       ) : inquiries.length === 0 ? (
-        <div className="py-16 text-center text-sm text-text-secondary">
-          問い合わせはありません
+        <div className="py-16 text-center text-sm text-text-secondary space-y-3">
+          <p>問い合わせがまだありません</p>
+          <Button size="sm" onClick={() => setShowModal(true)}>
+            <Plus className="h-4 w-4" />
+            新規登録
+          </Button>
         </div>
       ) : (
         <>
@@ -453,6 +481,7 @@ function InquiriesContent() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      disabled={quickChangingIds.has(inq.id)}
                       onClick={() =>
                         handleStatusQuickChange(
                           inq,
@@ -516,6 +545,7 @@ function InquiriesContent() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              disabled={quickChangingIds.has(inq.id)}
                               onClick={() =>
                                 handleStatusQuickChange(
                                   inq,
@@ -579,52 +609,54 @@ function InquiriesContent() {
             aria-hidden="true"
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-surface border border-border rounded-md max-h-[90vh] overflow-y-auto">
+            <div className="w-full max-w-md bg-surface border border-border rounded-md max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true">
               <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <h2 className="text-base font-semibold text-text">問い合わせ編集</h2>
                 <button type="button" onClick={() => setEditTarget(null)} className="text-text-secondary hover:text-text">
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="px-5 py-4 space-y-4">
-                {editError && (
-                  <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {editError}
+              <form onSubmit={(e) => { e.preventDefault(); handleEditSave(); }}>
+                <div className="px-5 py-4 space-y-4">
+                  {editError && (
+                    <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {editError}
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm text-text-secondary">問い合わせ者</p>
+                    <p className="text-sm font-medium text-text">{editTarget.contact_name}</p>
                   </div>
-                )}
-                <div>
-                  <p className="text-sm text-text-secondary">問い合わせ者</p>
-                  <p className="text-sm font-medium text-text">{editTarget.contact_name}</p>
-                </div>
-                <Select
-                  label="ステータス"
-                  options={[
-                    { value: 'new', label: '未対応' },
-                    { value: 'in_progress', label: '対応中' },
-                    { value: 'completed', label: '完了' },
-                  ]}
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value as InquiryStatus)}
-                />
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text">メモ</label>
-                  <textarea
-                    value={editNote}
-                    onChange={(e) => setEditNote(e.target.value)}
-                    rows={3}
-                    className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
+                  <Select
+                    label="ステータス"
+                    options={[
+                      { value: 'new', label: '未対応' },
+                      { value: 'in_progress', label: '対応中' },
+                      { value: 'completed', label: '完了' },
+                    ]}
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as InquiryStatus)}
                   />
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-text">メモ</label>
+                    <textarea
+                      value={editNote}
+                      onChange={(e) => setEditNote(e.target.value)}
+                      rows={3}
+                      className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setEditTarget(null)}>
-                  キャンセル
-                </Button>
-                <Button size="sm" onClick={handleEditSave} loading={editSaving} disabled={editSaving}>
-                  保存
-                </Button>
-              </div>
+                <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
+                  <Button variant="secondary" size="sm" type="button" onClick={() => setEditTarget(null)}>
+                    キャンセル
+                  </Button>
+                  <Button size="sm" type="submit" loading={editSaving} disabled={editSaving}>
+                    保存
+                  </Button>
+                </div>
+              </form>
             </div>
           </div>
         </>
@@ -639,74 +671,76 @@ function InquiriesContent() {
             aria-hidden="true"
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-surface border border-border rounded-md max-h-[90vh] overflow-y-auto">
+            <div className="w-full max-w-md bg-surface border border-border rounded-md max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true">
               <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <h2 className="text-base font-semibold text-text">問い合わせ登録</h2>
                 <button type="button" onClick={() => setShowModal(false)} className="text-text-secondary hover:text-text">
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="px-5 py-4 space-y-4">
-                {createError && (
-                  <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {createError}
-                  </div>
-                )}
-                <Select
-                  label="ソース *"
-                  options={sourceOptions}
-                  value={formSource}
-                  onChange={(e) => setFormSource(e.target.value as 'website' | 'phone' | 'other')}
-                />
-                <Input
-                  label="問い合わせ者名 *"
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="山田 太郎"
-                />
-                <Input
-                  label="会社名"
-                  value={formCompany}
-                  onChange={(e) => setFormCompany(e.target.value)}
-                />
-                {contactOptions.length > 0 && (
+              <form onSubmit={(e) => { e.preventDefault(); handleCreate(); }}>
+                <div className="px-5 py-4 space-y-4">
+                  {createError && (
+                    <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {createError}
+                    </div>
+                  )}
                   <Select
-                    label="コンタクト紐付け"
-                    options={contactOptions}
-                    value={formContactId}
-                    onChange={(e) => setFormContactId(e.target.value)}
-                    placeholder="紐付けなし"
+                    label="ソース *"
+                    options={sourceOptions}
+                    value={formSource}
+                    onChange={(e) => setFormSource(e.target.value as 'website' | 'phone' | 'other')}
                   />
-                )}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text">内容 *</label>
-                  <textarea
-                    value={formContent}
-                    onChange={(e) => setFormContent(e.target.value)}
-                    rows={4}
-                    className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
-                    placeholder="問い合わせ内容..."
+                  <Input
+                    label="問い合わせ者名 *"
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="山田 太郎"
                   />
+                  <Input
+                    label="会社名"
+                    value={formCompany}
+                    onChange={(e) => setFormCompany(e.target.value)}
+                  />
+                  {contactOptions.length > 0 && (
+                    <Select
+                      label="コンタクト紐付け"
+                      options={contactOptions}
+                      value={formContactId}
+                      onChange={(e) => setFormContactId(e.target.value)}
+                      placeholder="紐付けなし"
+                    />
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-text">内容 *</label>
+                    <textarea
+                      value={formContent}
+                      onChange={(e) => setFormContent(e.target.value)}
+                      rows={4}
+                      className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
+                      placeholder="問い合わせ内容..."
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-text">メモ</label>
+                    <textarea
+                      value={formNote}
+                      onChange={(e) => setFormNote(e.target.value)}
+                      rows={2}
+                      className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
+                    />
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text">メモ</label>
-                  <textarea
-                    value={formNote}
-                    onChange={(e) => setFormNote(e.target.value)}
-                    rows={2}
-                    className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
-                  />
+                <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
+                  <Button variant="secondary" size="sm" type="button" onClick={() => setShowModal(false)}>
+                    キャンセル
+                  </Button>
+                  <Button size="sm" type="submit" loading={creating} disabled={creating}>
+                    登録
+                  </Button>
                 </div>
-              </div>
-              <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setShowModal(false)}>
-                  キャンセル
-                </Button>
-                <Button size="sm" onClick={handleCreate} loading={creating} disabled={creating}>
-                  登録
-                </Button>
-              </div>
+              </form>
             </div>
           </div>
         </>
