@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
+import { SearchModal } from '@/components/search/search-modal';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -30,6 +31,7 @@ export default function RootLayout({
           <Header />
           <main className="flex-1 p-4 sm:p-6 overflow-x-hidden pt-14 md:pt-4">{children}</main>
         </div>
+        <SearchModal />
       </body>
     </html>
   );

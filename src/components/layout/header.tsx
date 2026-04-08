@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { User, LogOut } from 'lucide-react';
+import { User, LogOut, Search } from 'lucide-react';
 
 function Header() {
   const handleLogout = useCallback(async () => {
@@ -13,9 +13,23 @@ function Header() {
     window.location.href = '/login';
   }, []);
 
+  const handleOpenSearch = useCallback(() => {
+    document.dispatchEvent(new CustomEvent('open-search-modal'));
+  }, []);
+
   return (
     <header className="flex items-center justify-end border-b border-border bg-surface px-4 sm:px-6 py-3">
-      <div className="flex items-center gap-2 text-sm text-text-secondary">
+      <div className="flex items-center gap-3 text-sm text-text-secondary">
+        <button
+          type="button"
+          onClick={handleOpenSearch}
+          className="flex items-center gap-1.5 text-text-secondary hover:text-text transition-colors"
+          aria-label="検索を開く"
+        >
+          <Search className="h-4 w-4" />
+          <span className="hidden sm:inline text-xs">Cmd+K</span>
+        </button>
+        <div className="h-4 w-px bg-border" />
         <User className="h-4 w-4" />
         <span>内藤</span>
         <button
