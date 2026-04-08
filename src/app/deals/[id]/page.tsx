@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   AlertCircle,
   Save,
   Calendar,
@@ -80,6 +82,10 @@ export default function DealDetailPage() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // UI state
+  const [isDirty, setIsDirty] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   // editable fields
   const [phase, setPhase] = useState<DealPhase>('proposal_planned');
@@ -181,6 +187,17 @@ export default function DealDetailPage() {
     fetchMeetings();
   }, [fetchMeetings]);
 
+  // 未保存警告
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
   const handleSave = async () => {
     if (!id) return;
     setSaving(true);
@@ -210,14 +227,19 @@ export default function DealDetailPage() {
       });
       const json: { error?: string | null } = await res.json();
       if (!res.ok || json.error) {
-        setSaveMsg(json.error ?? '保存に失敗しました');
+        const msg = json.error ?? '保存に失敗しました';
+        setSaveMsg(msg);
+        setTimeout(() => setSaveMsg(null), 3000);
       } else {
         setSaveMsg('保存しました');
+        setTimeout(() => setSaveMsg(null), 3000);
+        setIsDirty(false);
         fetchDeal();
       }
     } catch (e) {
       console.error('案件の保存に失敗しました:', e);
       setSaveMsg('保存に失敗しました');
+      setTimeout(() => setSaveMsg(null), 3000);
     } finally {
       setSaving(false);
     }
@@ -292,10 +314,10 @@ export default function DealDetailPage() {
             </Card>
           )}
 
-          {/* 編集フォーム */}
+          {/* 基本情報（常に表示） */}
           <Card>
             <CardHeader>
-              <h2 className="text-sm font-semibold text-text">案件情報</h2>
+              <h2 className="text-sm font-semibold text-text">基本情報</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -303,20 +325,20 @@ export default function DealDetailPage() {
                   label="フェーズ"
                   options={phaseOptions}
                   value={phase}
-                  onChange={(e) => setPhase(e.target.value as DealPhase)}
+                  onChange={(e) => { setPhase(e.target.value as DealPhase); setIsDirty(true); }}
                 />
                 <Select
                   label="受注確率"
                   options={probabilityOptions}
                   value={probability}
-                  onChange={(e) => setProbability(e.target.value as DealProbability | '')}
+                  onChange={(e) => { setProbability(e.target.value as DealProbability | ''); setIsDirty(true); }}
                 />
               </div>
 
               <Input
                 label="次アクション"
                 value={nextAction}
-                onChange={(e) => setNextAction(e.target.value)}
+                onChange={(e) => { setNextAction(e.target.value); setIsDirty(true); }}
                 placeholder="次にやること"
               />
 
@@ -325,14 +347,14 @@ export default function DealDetailPage() {
                   label="次アクション日"
                   type="date"
                   value={nextActionDate}
-                  onChange={(e) => setNextActionDate(e.target.value)}
+                  onChange={(e) => { setNextActionDate(e.target.value); setIsDirty(true); }}
                 />
                 <div className="flex flex-wrap gap-2 mt-2">
                   {ACTION_DATE_SHORTCUTS.map((s) => (
                     <button
                       key={s.days}
                       type="button"
-                      onClick={() => setNextActionDate(addDays(s.days))}
+                      onClick={() => { setNextActionDate(addDays(s.days)); setIsDirty(true); }}
                       className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-xs text-text-secondary hover:bg-muted transition-colors"
                     >
                       <Calendar className="h-3 w-3" />
@@ -342,85 +364,14 @@ export default function DealDetailPage() {
                 </div>
               </div>
 
-              {/* 新フィールド */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="制作物"
-                  value={deliverable}
-                  onChange={(e) => setDeliverable(e.target.value)}
-                  placeholder="制作物/制作物想定"
-                />
-                <Input
-                  label="職種・内容"
-                  value={industry}
-                  onChange={(e) => setIndustry(e.target.value)}
-                  placeholder="職種、内容"
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="クライアント窓口"
-                  value={clientContactName}
-                  onChange={(e) => setClientContactName(e.target.value)}
-                  placeholder="先方の担当者名"
-                />
-                <Input
-                  label="納期"
-                  type="text"
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  placeholder="例: ~11月末、2026-12-31"
-                />
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text">報酬</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={revenue}
-                      onChange={(e) => setRevenue(e.target.value)}
-                      placeholder="0"
-                      className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent"
-                    />
-                    <span className="text-sm text-text-secondary">円</span>
-                  </div>
-                </div>
-              </div>
-
-              <Input
-                label="金額不明の場合のメモ"
-                value={revenueNote}
-                onChange={(e) => setRevenueNote(e.target.value)}
-                placeholder="例: 金額未定、要相談"
-              />
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="対象国"
-                  value={targetCountry}
-                  onChange={(e) => setTargetCountry(e.target.value)}
-                  placeholder="日本"
-                />
-                <Select
-                  label="税込/税抜"
-                  options={taxTypeOptions}
-                  value={taxType}
-                  onChange={(e) => setTaxType(e.target.value as DealTaxType | '')}
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="請求書受領月"
-                  value={billingMonth}
-                  onChange={(e) => setBillingMonth(e.target.value)}
-                  placeholder="例: 2026-04"
-                />
-                <Input
-                  label="詳細ステータス"
-                  value={statusDetail}
-                  onChange={(e) => setStatusDetail(e.target.value)}
-                  placeholder="自由記述"
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-text">メモ</label>
+                <textarea
+                  value={note}
+                  onChange={(e) => { setNote(e.target.value); setIsDirty(true); }}
+                  rows={4}
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
+                  placeholder="メモ"
                 />
               </div>
 
@@ -429,23 +380,12 @@ export default function DealDetailPage() {
                   type="checkbox"
                   id="has_movement"
                   checked={hasMovement}
-                  onChange={(e) => setHasMovement(e.target.checked)}
+                  onChange={(e) => { setHasMovement(e.target.checked); setIsDirty(true); }}
                   className="h-4 w-4 rounded border-border bg-surface text-accent focus:ring-accent/50"
                 />
                 <label htmlFor="has_movement" className="text-sm font-medium text-text">
                   動きあり
                 </label>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-text">メモ</label>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  rows={4}
-                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
-                  placeholder="メモ"
-                />
               </div>
 
               <div className="flex items-center gap-3">
@@ -460,6 +400,122 @@ export default function DealDetailPage() {
                 )}
               </div>
             </CardContent>
+          </Card>
+
+          {/* 詳細情報（折りたたみ、デフォルト閉じ） */}
+          <Card>
+            <CardHeader>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(!detailsOpen)}
+                className="flex items-center justify-between w-full text-left"
+              >
+                <h2 className="text-sm font-semibold text-text">詳細情報</h2>
+                {detailsOpen ? (
+                  <ChevronUp className="h-4 w-4 text-text-secondary" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-text-secondary" />
+                )}
+              </button>
+            </CardHeader>
+            {detailsOpen && (
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    label="制作物"
+                    value={deliverable}
+                    onChange={(e) => { setDeliverable(e.target.value); setIsDirty(true); }}
+                    placeholder="制作物/制作物想定"
+                  />
+                  <Input
+                    label="職種・内容"
+                    value={industry}
+                    onChange={(e) => { setIndustry(e.target.value); setIsDirty(true); }}
+                    placeholder="職種、内容"
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    label="クライアント窓口"
+                    value={clientContactName}
+                    onChange={(e) => { setClientContactName(e.target.value); setIsDirty(true); }}
+                    placeholder="先方の担当者名"
+                  />
+                  <Input
+                    label="納期"
+                    type="text"
+                    value={deadline}
+                    onChange={(e) => { setDeadline(e.target.value); setIsDirty(true); }}
+                    placeholder="例: ~11月末、2026-12-31"
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-text">報酬</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={revenue}
+                        onChange={(e) => { setRevenue(e.target.value); setIsDirty(true); }}
+                        placeholder="0"
+                        className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent"
+                      />
+                      <span className="text-sm text-text-secondary">円</span>
+                    </div>
+                  </div>
+                  <Input
+                    label="金額メモ"
+                    value={revenueNote}
+                    onChange={(e) => { setRevenueNote(e.target.value); setIsDirty(true); }}
+                    placeholder="例: 金額未定、要相談"
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    label="対象国"
+                    value={targetCountry}
+                    onChange={(e) => { setTargetCountry(e.target.value); setIsDirty(true); }}
+                    placeholder="日本"
+                  />
+                  <Select
+                    label="税込/税抜"
+                    options={taxTypeOptions}
+                    value={taxType}
+                    onChange={(e) => { setTaxType(e.target.value as DealTaxType | ''); setIsDirty(true); }}
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    label="請求書受領月"
+                    value={billingMonth}
+                    onChange={(e) => { setBillingMonth(e.target.value); setIsDirty(true); }}
+                    placeholder="例: 2026-04"
+                  />
+                  <Input
+                    label="詳細ステータス"
+                    value={statusDetail}
+                    onChange={(e) => { setStatusDetail(e.target.value); setIsDirty(true); }}
+                    placeholder="自由記述"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleSave} loading={saving} disabled={saving}>
+                    <Save className="h-4 w-4" />
+                    保存
+                  </Button>
+                  {saveMsg && (
+                    <span className={`text-sm ${saveMsg === '保存しました' ? 'text-green-500' : 'text-red-400'}`}>
+                      {saveMsg}
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            )}
           </Card>
         </div>
 

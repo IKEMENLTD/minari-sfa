@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { timingSafeEqual } from 'crypto';
+import { timingSafeEqual, randomUUID, createHmac } from 'crypto';
 
 const COOKIE_NAME = 'sd_auth';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30日
@@ -34,8 +34,11 @@ function safeCompare(input: string, expected: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  // IPアドレス取得
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  // IPアドレス取得（A3: Netlify固有の信頼できるIPヘッダーを優先）
+  const ip =
+    request.headers.get('x-nf-client-connection-ip')
+    ?? request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    ?? 'unknown';
 
   if (!checkLoginRate(ip)) {
     return NextResponse.json(
@@ -59,8 +62,14 @@ export async function POST(request: NextRequest) {
   // 成功時はカウンターリセット
   loginAttempts.delete(ip);
 
+  // HMAC署名付きセッショントークンを生成（認証バイパス防止）
+  const sessionId = randomUUID();
+  const hmacSecret = process.env.SITE_PASSWORD ?? 'fallback-secret';
+  const signature = createHmac('sha256', hmacSecret).update(sessionId).digest('hex');
+  const token = `${sessionId}.${signature}`;
+
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(COOKIE_NAME, 'authenticated', {
+  response.cookies.set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',

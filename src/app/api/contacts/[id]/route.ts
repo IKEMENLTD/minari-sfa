@@ -2,24 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
+import { stripHtml } from '@/lib/sanitize';
 import type { ContactRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
-// バリデーション
+// バリデーション（B3: HTMLタグ除去によるXSS防止）
 // ---------------------------------------------------------------------------
 
 const uuidSchema = z.string().uuid();
 
+const sanitizedStringNullable = (maxLen: number) => z.string().max(maxLen).transform(stripHtml).nullable().optional();
+
 const updateContactSchema = z.object({
-  full_name: z.string().min(1).max(200).optional(),
-  company_name: z.string().max(200).nullable().optional(),
-  department: z.string().max(200).nullable().optional(),
-  position: z.string().max(200).nullable().optional(),
+  full_name: z.string().min(1).max(200).transform(stripHtml).optional(),
+  company_name: sanitizedStringNullable(200),
+  department: sanitizedStringNullable(200),
+  position: sanitizedStringNullable(200),
   email: z.string().email('メールアドレスの形式が不正です').max(200).nullable().optional(),
   phone: z.string().max(50).nullable().optional(),
   tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
   assigned_to: z.string().uuid().optional(),
-  note: z.string().max(2000).nullable().optional(),
+  note: sanitizedStringNullable(2000),
 }).strict();
 
 // ---------------------------------------------------------------------------
@@ -54,6 +57,14 @@ export async function GET(
       return NextResponse.json(
         { data: null, error: '指定されたコンタクトが見つかりません' },
         { status: 404 }
+      );
+    }
+
+    // memberロールは自分の担当リソースのみアクセス可能（IDOR防止）
+    if (auth.role === 'member' && data.assigned_to !== auth.userId) {
+      return NextResponse.json(
+        { data: null, error: 'アクセス権限がありません' },
+        { status: 403 }
       );
     }
 
@@ -101,6 +112,22 @@ export async function PATCH(
     }
 
     const supabase = createServerSupabaseClient();
+
+    // memberロールは自分の担当リソースのみ更新可能（IDOR防止）
+    if (auth.role === 'member') {
+      const { data: existing } = await supabase.from('contacts').select('assigned_to').eq('id', id).single();
+      if (!existing) {
+        return NextResponse.json({ data: null, error: '指定されたコンタクトが見つかりません' }, { status: 404 });
+      }
+      if (existing.assigned_to !== auth.userId) {
+        return NextResponse.json({ data: null, error: 'アクセス権限がありません' }, { status: 403 });
+      }
+    }
+
+    // memberロールはassigned_toの変更を禁止（C3: 担当者の任意変更防止）
+    if (auth.role === 'member' && parsed.data.assigned_to !== undefined && parsed.data.assigned_to !== auth.userId) {
+      return NextResponse.json({ data: null, error: '担当者の変更権限がありません' }, { status: 403 });
+    }
 
     const { full_name, company_name, department, position, email, phone, tier, assigned_to, note } = parsed.data;
     const updateData: Record<string, unknown> = {

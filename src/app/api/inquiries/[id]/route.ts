@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
+import { stripHtml } from '@/lib/sanitize';
 import type { InquiryRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
-// バリデーション
+// バリデーション（B3: HTMLタグ除去によるXSS防止）
 // ---------------------------------------------------------------------------
 
 const uuidSchema = z.string().uuid();
@@ -14,7 +15,7 @@ const updateInquirySchema = z.object({
   status: z.enum(['new', 'in_progress', 'completed']).optional(),
   contact_id: z.string().uuid().nullable().optional(),
   assigned_to: z.string().uuid().nullable().optional(),
-  note: z.string().max(2000).nullable().optional(),
+  note: z.string().max(2000).transform(stripHtml).nullable().optional(),
 }).strict();
 
 // ---------------------------------------------------------------------------
@@ -51,6 +52,22 @@ export async function PATCH(
     }
 
     const supabase = createServerSupabaseClient();
+
+    // memberロールは自分の担当リソースのみ更新可能（IDOR防止）
+    if (auth.role === 'member') {
+      const { data: existing } = await supabase.from('inquiries').select('assigned_to').eq('id', id).single();
+      if (!existing) {
+        return NextResponse.json({ data: null, error: '指定された問い合わせが見つかりません' }, { status: 404 });
+      }
+      if (existing.assigned_to !== auth.userId) {
+        return NextResponse.json({ data: null, error: 'アクセス権限がありません' }, { status: 403 });
+      }
+    }
+
+    // memberロールはassigned_toの変更を禁止（C3: 担当者の任意変更防止）
+    if (auth.role === 'member' && parsed.data.assigned_to !== undefined && parsed.data.assigned_to !== null && parsed.data.assigned_to !== auth.userId) {
+      return NextResponse.json({ data: null, error: '担当者の変更権限がありません' }, { status: 403 });
+    }
 
     const { status, contact_id, assigned_to, note } = parsed.data;
     const updateData: Record<string, unknown> = {

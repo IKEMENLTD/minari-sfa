@@ -2,34 +2,37 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
+import { stripHtml } from '@/lib/sanitize';
 import type { DealWithContact, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
-// バリデーション
+// バリデーション（B3: HTMLタグ除去によるXSS防止）
 // ---------------------------------------------------------------------------
 
 const uuidSchema = z.string().uuid();
 
+const sanitizedStringNullable = (maxLen: number) => z.string().max(maxLen).transform(stripHtml).nullable().optional();
+
 const updateDealSchema = z.object({
   contact_id: z.string().uuid().optional(),
-  title: z.string().min(1).max(500).optional(),
+  title: z.string().min(1).max(500).transform(stripHtml).optional(),
   phase: z.enum(['proposal_planned', 'proposal_active', 'waiting', 'follow_up', 'active']).optional(),
   probability: z.enum(['high', 'medium', 'low', 'very_low', 'unknown']).nullable().optional(),
-  next_action: z.string().max(500).nullable().optional(),
+  next_action: sanitizedStringNullable(500),
   next_action_date: z.string().max(20).nullable().optional(),
   assigned_to: z.string().uuid().optional(),
-  note: z.string().max(2000).nullable().optional(),
-  deliverable: z.string().max(1000).nullable().optional(),
-  industry: z.string().max(500).nullable().optional(),
+  note: sanitizedStringNullable(2000),
+  deliverable: sanitizedStringNullable(1000),
+  industry: sanitizedStringNullable(500),
   deadline: z.string().max(20).nullable().optional(),
   revenue: z.number().int().min(0, '報酬は0以上を指定してください').nullable().optional(),
-  target_country: z.string().max(200).nullable().optional(),
+  target_country: sanitizedStringNullable(200),
   tax_type: z.enum(['included', 'excluded']).nullable().optional(),
   has_movement: z.boolean().optional(),
-  status_detail: z.string().max(1000).nullable().optional(),
-  billing_month: z.string().max(50).nullable().optional(),
-  client_contact_name: z.string().max(200).nullable().optional(),
-  revenue_note: z.string().max(1000).nullable().optional(),
+  status_detail: sanitizedStringNullable(1000),
+  billing_month: sanitizedStringNullable(50),
+  client_contact_name: sanitizedStringNullable(200),
+  revenue_note: sanitizedStringNullable(1000),
 }).strict();
 
 // ---------------------------------------------------------------------------
@@ -64,6 +67,14 @@ export async function GET(
       return NextResponse.json(
         { data: null, error: '指定された案件が見つかりません' },
         { status: 404 }
+      );
+    }
+
+    // memberロールは自分の担当リソースのみアクセス可能（IDOR防止）
+    if (auth.role === 'member' && data.assigned_to !== auth.userId) {
+      return NextResponse.json(
+        { data: null, error: 'アクセス権限がありません' },
+        { status: 403 }
       );
     }
 
@@ -138,6 +149,22 @@ export async function PATCH(
     }
 
     const supabase = createServerSupabaseClient();
+
+    // memberロールは自分の担当リソースのみ更新可能（IDOR防止）
+    if (auth.role === 'member') {
+      const { data: existing } = await supabase.from('deals').select('assigned_to').eq('id', id).single();
+      if (!existing) {
+        return NextResponse.json({ data: null, error: '指定された案件が見つかりません' }, { status: 404 });
+      }
+      if (existing.assigned_to !== auth.userId) {
+        return NextResponse.json({ data: null, error: 'アクセス権限がありません' }, { status: 403 });
+      }
+    }
+
+    // memberロールはassigned_toの変更を禁止（C3: 担当者の任意変更防止）
+    if (auth.role === 'member' && parsed.data.assigned_to !== undefined && parsed.data.assigned_to !== auth.userId) {
+      return NextResponse.json({ data: null, error: '担当者の変更権限がありません' }, { status: 403 });
+    }
 
     const {
       contact_id, title, phase, probability, next_action, next_action_date,

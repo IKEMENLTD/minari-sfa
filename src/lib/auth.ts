@@ -27,6 +27,13 @@ export async function validateAuth(
   // モックモードでは認証をスキップ（PoC段階で使用）
   // WARNING: 本番移行時は USE_MOCK=false + Supabase Auth を有効化すること
   if (process.env.USE_MOCK === 'true') {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('FATAL: USE_MOCK=true is forbidden in production');
+      return NextResponse.json(
+        { data: null, error: 'サーバー設定エラー' },
+        { status: 500 }
+      );
+    }
     return { userId: 'mock-user-id', role: 'admin' };
   }
 

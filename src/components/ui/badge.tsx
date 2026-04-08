@@ -10,11 +10,11 @@ interface BadgeProps {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
-  default: 'bg-muted text-muted-foreground',
-  success: 'bg-green-50 text-green-700',
-  warning: 'bg-amber-50 text-amber-700',
-  danger: 'bg-red-50 text-red-700',
-  info: 'bg-blue-50 text-blue-700',
+  default: 'bg-zinc-500/10 text-zinc-400 border border-zinc-500/30',
+  success: 'bg-green-500/10 text-green-400 border border-green-500/30',
+  warning: 'bg-amber-500/10 text-amber-400 border border-amber-500/30',
+  danger: 'bg-red-500/10 text-red-400 border border-red-500/30',
+  info: 'bg-blue-500/10 text-blue-400 border border-blue-500/30',
 };
 
 function Badge({ variant = 'default', children, className }: BadgeProps) {

@@ -3,10 +3,11 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { AlertCircle, ArrowUpDown, ArrowUp, ArrowDown, Plus, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -23,7 +24,7 @@ import {
   PROBABILITY_LABEL,
   PROBABILITY_COLOR,
 } from '@/lib/constants';
-import type { DealPhase, DealProbability, DealWithContact } from '@/types';
+import type { DealPhase, DealProbability, DealWithContact, ContactRow } from '@/types';
 
 const TABS: { value: DealPhase | ''; label: string }[] = [
   { value: '', label: '全て' },
@@ -50,6 +51,76 @@ function DealsContent() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('');
   const [assignedToOptions, setAssignedToOptions] = useState<{ value: string; label: string }[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+
+  // 案件作成モーダル
+  const [showModal, setShowModal] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createContactId, setCreateContactId] = useState('');
+  const [createPhase, setCreatePhase] = useState<DealPhase>('proposal_planned');
+  const [createNextAction, setCreateNextAction] = useState('');
+  const [createNextActionDate, setCreateNextActionDate] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [contactOptions, setContactOptions] = useState<{ value: string; label: string }[]>([]);
+
+  // コンタクト一覧取得（モーダル用）
+  const fetchContactOptions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/contacts?limit=500');
+      if (!res.ok) return;
+      const json: { data: ContactRow[] } = await res.json();
+      setContactOptions(
+        json.data.map((c) => ({
+          value: c.id,
+          label: `${c.full_name}${c.company_name ? ` (${c.company_name})` : ''}`,
+        }))
+      );
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const handleCreate = async () => {
+    if (!createTitle.trim()) {
+      setCreateError('タイトルは必須です');
+      return;
+    }
+    if (!createContactId) {
+      setCreateError('コンタクトを選択してください');
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const res = await fetch('/api/deals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: createTitle,
+          contact_id: createContactId,
+          phase: createPhase,
+          next_action: createNextAction || null,
+          next_action_date: createNextActionDate || null,
+        }),
+      });
+      const json: { error?: string | null } = await res.json();
+      if (!res.ok || json.error) {
+        setCreateError(json.error ?? '作成に失敗しました');
+      } else {
+        setShowModal(false);
+        setCreateTitle('');
+        setCreateContactId('');
+        setCreatePhase('proposal_planned');
+        setCreateNextAction('');
+        setCreateNextActionDate('');
+        fetchDeals();
+      }
+    } catch {
+      setCreateError('作成に失敗しました');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const fetchDeals = useCallback(async () => {
     if (abortRef.current) abortRef.current.abort();
@@ -143,7 +214,13 @@ function DealsContent() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-text">案件ボード</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-text">案件ボード</h1>
+        <Button size="sm" onClick={() => { setShowModal(true); fetchContactOptions(); }}>
+          <Plus className="h-4 w-4" />
+          案件を追加
+        </Button>
+      </div>
 
       {/* フェーズタブ + 担当者フィルター */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -376,9 +453,78 @@ function DealsContent() {
           )}
         </>
       )}
+      {/* 案件作成モーダル */}
+      {showModal && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/30"
+            onClick={() => setShowModal(false)}
+            aria-hidden="true"
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-surface border border-border rounded-md max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <h2 className="text-base font-semibold text-text">案件を追加</h2>
+                <button type="button" onClick={() => setShowModal(false)} className="text-text-secondary hover:text-text">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="px-5 py-4 space-y-4">
+                {createError && (
+                  <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {createError}
+                  </div>
+                )}
+                <Input
+                  label="タイトル *"
+                  value={createTitle}
+                  onChange={(e) => setCreateTitle(e.target.value)}
+                  placeholder="案件タイトル"
+                />
+                <Select
+                  label="コンタクト *"
+                  options={contactOptions}
+                  value={createContactId}
+                  onChange={(e) => setCreateContactId(e.target.value)}
+                  placeholder="コンタクトを選択..."
+                />
+                <Select
+                  label="フェーズ"
+                  options={phaseOptions}
+                  value={createPhase}
+                  onChange={(e) => setCreatePhase(e.target.value as DealPhase)}
+                />
+                <Input
+                  label="次アクション"
+                  value={createNextAction}
+                  onChange={(e) => setCreateNextAction(e.target.value)}
+                  placeholder="次にやること"
+                />
+                <Input
+                  label="次アクション日"
+                  type="date"
+                  value={createNextActionDate}
+                  onChange={(e) => setCreateNextActionDate(e.target.value)}
+                />
+              </div>
+              <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setShowModal(false)}>
+                  キャンセル
+                </Button>
+                <Button size="sm" onClick={handleCreate} loading={creating} disabled={creating}>
+                  作成
+                </Button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
+const phaseOptions = DEAL_PHASES.map((p) => ({ value: p.id, label: p.name }));
 
 export default function DealsPage() {
   return (

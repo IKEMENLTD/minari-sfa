@@ -127,14 +127,18 @@ export default function MeetingDetailPage() {
       });
       const json: { error?: string | null } = await res.json();
       if (!res.ok || json.error) {
-        setSaveMsg(json.error ?? '保存に失敗しました');
+        const msg = json.error ?? '保存に失敗しました';
+        setSaveMsg(msg);
+        setTimeout(() => setSaveMsg(null), 3000);
       } else {
         setSaveMsg('保存しました');
+        setTimeout(() => setSaveMsg(null), 3000);
         fetchMeeting();
       }
     } catch (e) {
       console.error('会議の保存に失敗しました:', e);
       setSaveMsg('保存に失敗しました');
+      setTimeout(() => setSaveMsg(null), 3000);
     } finally {
       setSaving(false);
     }

@@ -28,7 +28,7 @@ export default function RootLayout({
         <Sidebar />
         <div className="flex flex-1 flex-col min-w-0">
           <Header />
-          <main className="flex-1 p-4 sm:p-6 overflow-x-hidden">{children}</main>
+          <main className="flex-1 p-4 sm:p-6 overflow-x-hidden pt-14 md:pt-4">{children}</main>
         </div>
       </body>
     </html>

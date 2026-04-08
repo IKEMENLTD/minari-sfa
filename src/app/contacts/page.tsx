@@ -321,6 +321,7 @@ function ContactsContent() {
                   <tr>
                     <TableHeader>氏名</TableHeader>
                     <TableHeader>会社名</TableHeader>
+                    <TableHeader>部署/役職</TableHeader>
                     <TableHeader>ティア</TableHeader>
                     <TableHeader>担当者</TableHeader>
                     <TableHeader>登録日</TableHeader>
@@ -335,6 +336,11 @@ function ContactsContent() {
                         </Link>
                       </TableCell>
                       <TableCell>{c.company_name ?? '-'}</TableCell>
+                      <TableCell>
+                        <span className="text-sm text-text">
+                          {[c.department, c.position].filter(Boolean).join(' / ') || '-'}
+                        </span>
+                      </TableCell>
                       <TableCell>
                         <Badge variant="info">{TIER_LABEL[c.tier] ?? `Tier ${c.tier}`}</Badge>
                       </TableCell>

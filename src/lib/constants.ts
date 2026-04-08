@@ -81,6 +81,8 @@ export const DEFAULT_PAGE_SIZE = 50;
 
 /** 次アクション期間ショートカット（日数） */
 export const ACTION_DATE_SHORTCUTS = [
+  { label: '明日', days: 1 },
+  { label: '3日後', days: 3 },
   { label: '1週間後', days: 7 },
   { label: '1ヶ月後', days: 30 },
   { label: '3ヶ月後', days: 90 },

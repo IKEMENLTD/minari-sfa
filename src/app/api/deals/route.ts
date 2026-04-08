@@ -3,32 +3,35 @@ import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
 import { DEFAULT_PAGE_SIZE } from '@/lib/constants';
+import { stripHtml } from '@/lib/sanitize';
 import type { DealRow, DealWithContact, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
-// バリデーション
+// バリデーション（B3: HTMLタグ除去によるXSS防止）
 // ---------------------------------------------------------------------------
+
+const sanitizedStringNullable = (maxLen: number) => z.string().max(maxLen).transform(stripHtml).nullable().optional();
 
 const createDealSchema = z.object({
   contact_id: z.string().uuid('contact_id は有効なUUIDを指定してください'),
-  title: z.string().min(1, '案件名は必須です').max(500),
+  title: z.string().min(1, '案件名は必須です').max(500).transform(stripHtml),
   phase: z.enum(['proposal_planned', 'proposal_active', 'waiting', 'follow_up', 'active']),
   probability: z.enum(['high', 'medium', 'low', 'very_low', 'unknown']).nullable().optional(),
-  next_action: z.string().max(500).nullable().optional(),
+  next_action: sanitizedStringNullable(500),
   next_action_date: z.string().max(20).nullable().optional(),
   assigned_to: z.string().uuid().optional(),
-  note: z.string().max(2000).nullable().optional(),
-  deliverable: z.string().max(1000).nullable().optional(),
-  industry: z.string().max(500).nullable().optional(),
+  note: sanitizedStringNullable(2000),
+  deliverable: sanitizedStringNullable(1000),
+  industry: sanitizedStringNullable(500),
   deadline: z.string().max(20).nullable().optional(),
   revenue: z.number().int().min(0, '報酬は0以上を指定してください').nullable().optional(),
-  target_country: z.string().max(200).nullable().optional(),
+  target_country: sanitizedStringNullable(200),
   tax_type: z.enum(['included', 'excluded']).nullable().optional(),
   has_movement: z.boolean().optional(),
-  status_detail: z.string().max(1000).nullable().optional(),
-  billing_month: z.string().max(50).nullable().optional(),
-  client_contact_name: z.string().max(200).nullable().optional(),
-  revenue_note: z.string().max(1000).nullable().optional(),
+  status_detail: sanitizedStringNullable(1000),
+  billing_month: sanitizedStringNullable(50),
+  client_contact_name: sanitizedStringNullable(200),
+  revenue_note: sanitizedStringNullable(1000),
 }).strict();
 
 // ---------------------------------------------------------------------------

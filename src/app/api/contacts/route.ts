@@ -3,24 +3,34 @@ import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
 import { DEFAULT_PAGE_SIZE } from '@/lib/constants';
+import { stripHtml } from '@/lib/sanitize';
 import type { ContactRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
-// バリデーション
+// バリデーション（B3: HTMLタグ除去によるXSS防止）
 // ---------------------------------------------------------------------------
 
+const sanitizedStringNullable = (maxLen: number) => z.string().max(maxLen).transform(stripHtml).nullable().optional();
+
 const createContactSchema = z.object({
-  full_name: z.string().min(1, '氏名は必須です').max(200),
-  company_name: z.string().max(200).nullable().optional(),
-  department: z.string().max(200).nullable().optional(),
-  position: z.string().max(200).nullable().optional(),
+  full_name: z.string().min(1, '氏名は必須です').max(200).transform(stripHtml),
+  company_name: sanitizedStringNullable(200),
+  department: sanitizedStringNullable(200),
+  position: sanitizedStringNullable(200),
   email: z.string().email('メールアドレスの形式が不正です').max(200).nullable().optional(),
   phone: z.string().max(50).nullable().optional(),
   tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
   assigned_to: z.string().uuid().optional(),
-  note: z.string().max(2000).nullable().optional(),
+  note: sanitizedStringNullable(2000),
   source: z.enum(['eight', 'manual', 'tldv']).optional(),
 }).strict();
+
+// ---------------------------------------------------------------------------
+// TODO [D1]: APIレート制限はサーバーレス環境ではインメモリ方式が効かないため、
+// Upstash Redis等の外部サービスでの実装を将来課題とする。
+// TODO [E2]: Webhookリプレイ攻撃防止（タイムスタンプ検証）は将来課題。
+// TODO [F2]: select('*') を必要なカラムのみに制限することは将来課題。
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // GET /api/contacts - コンタクト一覧

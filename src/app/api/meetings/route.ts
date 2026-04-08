@@ -3,10 +3,11 @@ import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
 import { DEFAULT_PAGE_SIZE } from '@/lib/constants';
+import { stripHtml } from '@/lib/sanitize';
 import type { MeetingRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
-// バリデーション
+// バリデーション（B3: HTMLタグ除去によるXSS防止）
 // ---------------------------------------------------------------------------
 
 const createMeetingSchema = z.object({
@@ -15,9 +16,9 @@ const createMeetingSchema = z.object({
   meeting_date: z.string().min(1, '会議日は必須です'),
   source: z.enum(['tldv', 'teams_copilot', 'manual']),
   source_id: z.string().max(500).nullable().optional(),
-  participants: z.array(z.string().max(200)).max(50).optional(),
+  participants: z.array(z.string().max(200).transform(stripHtml)).max(50).optional(),
   tool: z.enum(['teams', 'zoom', 'meet', 'in_person', 'phone']).nullable().optional(),
-  transcript_text: z.string().max(500_000).optional(),
+  transcript_text: z.string().max(500_000).transform(stripHtml).optional(),
 }).strict();
 
 // ---------------------------------------------------------------------------

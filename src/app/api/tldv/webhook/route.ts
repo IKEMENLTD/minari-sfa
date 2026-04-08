@@ -34,11 +34,17 @@ function verifyWebhookSignature(
     .createHmac('sha256', secret)
     .update(payload)
     .digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expected)
-  );
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  // 長さが異なる場合はタイミング攻撃を防ぐためfalseを返す
+  if (sigBuf.length !== expBuf.length) return false;
+  return crypto.timingSafeEqual(sigBuf, expBuf);
 }
+
+// ---------------------------------------------------------------------------
+// TODO [E2]: Webhookリプレイ攻撃防止のため、ペイロードにタイムスタンプを含め、
+// 一定時間（例: 5分）以上前のリクエストを拒否する仕組みを将来実装する。
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // POST /api/tldv/webhook - TLDV Webhook受信

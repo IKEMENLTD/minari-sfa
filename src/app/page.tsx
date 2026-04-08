@@ -150,42 +150,46 @@ export default function DashboardPage() {
           const Icon = PHASE_ICONS[phase];
           const count = data?.phaseSummary.find((s) => s.phase === phase)?.count ?? 0;
           return (
-            <Card key={phase}>
-              <CardContent className="flex items-center gap-4 py-5">
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
-                  <Icon className="h-5 w-5 text-text-secondary" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-text-secondary">{PHASE_LABEL[phase]}</p>
-                  {loading ? (
-                    <Skeleton className="mt-1 h-6 w-12" />
-                  ) : (
-                    <p className="text-xl font-semibold text-text">{count}件</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <Link key={phase} href={`/deals?phase=${phase}`} className="block cursor-pointer">
+              <Card className="hover:border-accent/50 transition-colors">
+                <CardContent className="flex items-center gap-4 py-5">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+                    <Icon className="h-5 w-5 text-text-secondary" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-text-secondary">{PHASE_LABEL[phase]}</p>
+                    {loading ? (
+                      <Skeleton className="mt-1 h-6 w-12" />
+                    ) : (
+                      <p className="text-xl font-semibold text-text">{count}件</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           );
         })}
       </div>
 
       {/* 未対応問い合わせ + 月別件数 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardContent className="flex items-center gap-4 py-5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
-              <FileText className="h-5 w-5 text-text-secondary" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-text-secondary">未対応問い合わせ</p>
-              {loading ? (
-                <Skeleton className="mt-1 h-6 w-12" />
-              ) : (
-                <p className="text-xl font-semibold text-text">{data?.unhandledInquiries ?? 0}件</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <Link href="/inquiries?status=new" className="block cursor-pointer">
+          <Card className="hover:border-accent/50 transition-colors">
+            <CardContent className="flex items-center gap-4 py-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+                <FileText className="h-5 w-5 text-text-secondary" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-text-secondary">未対応問い合わせ</p>
+                {loading ? (
+                  <Skeleton className="mt-1 h-6 w-12" />
+                ) : (
+                  <p className="text-xl font-semibold text-text">{data?.unhandledInquiries ?? 0}件</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
         {(data?.inquiryMonthly ?? []).slice(0, 2).map((m) => (
           <Card key={m.month}>
             <CardContent className="flex items-center gap-4 py-5">

@@ -3,20 +3,23 @@ import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
 import { DEFAULT_PAGE_SIZE } from '@/lib/constants';
+import { stripHtml } from '@/lib/sanitize';
 import type { InquiryRow, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
-// バリデーション
+// バリデーション（B3: HTMLタグ除去によるXSS防止）
 // ---------------------------------------------------------------------------
+
+const sanitizedStringNullable = (maxLen: number) => z.string().max(maxLen).transform(stripHtml).nullable().optional();
 
 const createInquirySchema = z.object({
   source: z.enum(['website', 'phone', 'other']),
-  contact_name: z.string().min(1, '連絡先名は必須です').max(200),
-  company_name: z.string().max(200).nullable().optional(),
+  contact_name: z.string().min(1, '連絡先名は必須です').max(200).transform(stripHtml),
+  company_name: sanitizedStringNullable(200),
   contact_id: z.string().uuid().nullable().optional(),
-  content: z.string().min(1, '問い合わせ内容は必須です').max(5000),
+  content: z.string().min(1, '問い合わせ内容は必須です').max(5000).transform(stripHtml),
   assigned_to: z.string().uuid().nullable().optional(),
-  note: z.string().max(2000).nullable().optional(),
+  note: sanitizedStringNullable(2000),
 }).strict();
 
 // ---------------------------------------------------------------------------
