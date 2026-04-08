@@ -26,11 +26,19 @@ interface ClaudeApiResponse {
 // Claude API 呼び出し
 // ---------------------------------------------------------------------------
 
+interface ClaudeSummaryResult {
+  summary: string;
+  estimatedContact: string;
+  participants: string[];
+  suggestedNextAction: string | null;
+  suggestedNextActionDate: string | null;
+}
+
 async function callClaudeApi(
   transcript: string,
   apiKey: string,
   signal: AbortSignal
-): Promise<{ summary: string; estimatedContact: string; participants: string[] }> {
+): Promise<ClaudeSummaryResult> {
   const response = await fetch(CLAUDE_API_URL, {
     method: "POST",
     headers: {
@@ -164,6 +172,8 @@ export default async function handler(request: Request): Promise<Response> {
         meeting_id: meetingId,
         summary_text: result.summary,
         model_used: CLAUDE_SONNET,
+        suggested_next_action: result.suggestedNextAction ?? null,
+        suggested_next_action_date: result.suggestedNextActionDate ?? null,
       });
 
       if (insertError) {
@@ -194,6 +204,48 @@ export default async function handler(request: Request): Promise<Response> {
               `会議 ${meetingId} の参加者更新に失敗しました:`,
               updateError.message
             );
+          }
+        }
+      }
+
+      // deal_id が紐付いている場合、次アクションを自動提案（既存値がnullの場合のみ）
+      if (result.suggestedNextAction) {
+        const { data: meetingForDeal } = await supabase
+          .from("meetings")
+          .select("deal_id")
+          .eq("id", meetingId)
+          .single();
+
+        if (meetingForDeal?.deal_id) {
+          const { data: dealData } = await supabase
+            .from("deals")
+            .select("next_action, next_action_date")
+            .eq("id", meetingForDeal.deal_id)
+            .single();
+
+          if (dealData && !dealData.next_action) {
+            const updatePayload: Record<string, string> = {
+              next_action: result.suggestedNextAction,
+            };
+            if (result.suggestedNextActionDate) {
+              updatePayload.next_action_date = result.suggestedNextActionDate;
+            }
+
+            const { error: dealUpdateError } = await supabase
+              .from("deals")
+              .update(updatePayload)
+              .eq("id", meetingForDeal.deal_id);
+
+            if (dealUpdateError) {
+              console.warn(
+                `案件 ${meetingForDeal.deal_id} の次アクション更新に失敗しました:`,
+                dealUpdateError.message
+              );
+            } else {
+              console.log(
+                `案件 ${meetingForDeal.deal_id} の次アクションを自動設定しました: ${result.suggestedNextAction}`
+              );
+            }
           }
         }
       }

@@ -104,6 +104,8 @@ export interface SummaryRow {
   meeting_id: string;
   summary_text: string;
   model_used: string;
+  suggested_next_action: string | null;
+  suggested_next_action_date: string | null;
   created_at: string;
 }
 
@@ -297,6 +299,8 @@ export interface MeetingSummaryResult {
   summary: string;
   estimatedContact: string;
   participants: string[];
+  suggestedNextAction: string | null;
+  suggestedNextActionDate: string | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS summaries (
   meeting_id UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
   summary_text TEXT NOT NULL,
   model_used TEXT NOT NULL,
+  suggested_next_action TEXT,
+  suggested_next_action_date DATE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

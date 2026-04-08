@@ -12,6 +12,7 @@ import {
   Clock,
   FileText,
   Play,
+  Upload,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -441,6 +442,17 @@ export default function DashboardPage() {
             会議記録はありません
           </div>
         )}
+      </div>
+
+      {/* データインポート導線 */}
+      <div className="border-t border-border pt-4 mt-2">
+        <Link
+          href="/import"
+          className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-accent transition-colors"
+        >
+          <Upload className="h-4 w-4" />
+          データインポート（CSV / TSV）
+        </Link>
       </div>
     </div>
   );

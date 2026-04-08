@@ -65,7 +65,7 @@ export async function GET(
     // summary を取得
     const { data: summaries } = await supabase
       .from('summaries')
-      .select('id, meeting_id, summary_text, model_used, created_at')
+      .select('id, meeting_id, summary_text, model_used, suggested_next_action, suggested_next_action_date, created_at')
       .eq('meeting_id', id)
       .order('created_at', { ascending: false })
       .limit(1);
@@ -175,7 +175,7 @@ export async function PATCH(
 
     const { data: summaries } = await supabase
       .from('summaries')
-      .select('id, meeting_id, summary_text, model_used, created_at')
+      .select('id, meeting_id, summary_text, model_used, suggested_next_action, suggested_next_action_date, created_at')
       .eq('meeting_id', id)
       .order('created_at', { ascending: false })
       .limit(1);
