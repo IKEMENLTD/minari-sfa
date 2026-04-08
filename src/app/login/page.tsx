@@ -69,9 +69,15 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading || !password.trim()}
-            className="bg-accent px-4 py-2.5 text-sm font-medium text-white min-h-[44px] hover:bg-accent-hover disabled:opacity-50 transition-colors"
+            className="bg-accent px-4 py-2.5 text-sm font-medium text-white min-h-[44px] hover:bg-accent-hover disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
-            {loading ? '認証中...' : 'ログイン'}
+            {loading && (
+              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            {loading ? 'ログイン中...' : 'ログイン'}
           </button>
         </form>
       </div>
