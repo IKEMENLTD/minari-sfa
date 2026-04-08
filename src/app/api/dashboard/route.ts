@@ -14,12 +14,21 @@ import type {
 // ダッシュボード応答型
 // ---------------------------------------------------------------------------
 
+interface StaleDealItem {
+  id: string;
+  title: string;
+  phase: string;
+  updated_at: string;
+  contact: { full_name: string; company_name: string | null } | null;
+}
+
 interface DashboardData {
   reminders: DealWithContact[];
   phaseSummary: PhaseSummary[];
   recentMeetings: MeetingRow[];
   unhandledInquiries: number;
   inquiryMonthly: InquiryMonthlySummary[];
+  staleDeals: StaleDealItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +89,38 @@ export async function GET(
         client_contact_name: row.client_contact_name ?? null,
         revenue_note: row.revenue_note ?? null,
         created_at: row.created_at,
+        updated_at: row.updated_at,
+        contact: contact ?? null,
+      };
+    });
+
+    // --- 1b. 放置案件: 14日以上updated_atが更新されていない & 稼働中でない ---
+    const staleThreshold = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+    let staleQuery = supabase
+      .from('deals')
+      .select('id, title, phase, updated_at, contact:contacts(full_name, company_name)')
+      .neq('phase', 'active')
+      .lt('updated_at', staleThreshold)
+      .order('updated_at', { ascending: true })
+      .limit(10);
+
+    if (auth.role === 'member') {
+      staleQuery = staleQuery.eq('assigned_to', auth.userId);
+    }
+
+    const { data: staleData, error: staleError } = await staleQuery;
+
+    if (staleError) {
+      console.error('放置案件の取得に失敗しました:', staleError.message);
+    }
+
+    const staleDeals: StaleDealItem[] = (staleData ?? []).map((row) => {
+      const contact = Array.isArray(row.contact) ? row.contact[0] : row.contact;
+      return {
+        id: row.id,
+        title: row.title,
+        phase: row.phase,
         updated_at: row.updated_at,
         contact: contact ?? null,
       };
@@ -188,6 +229,7 @@ export async function GET(
         recentMeetings,
         unhandledInquiries: inquiryCount ?? 0,
         inquiryMonthly,
+        staleDeals,
       },
       error: null,
     });

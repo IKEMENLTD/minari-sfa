@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowRight,
   Calendar,
   Briefcase,
@@ -25,7 +26,7 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PHASE_LABEL, TOOL_LABEL } from '@/lib/constants';
-import { formatDateShort } from '@/lib/format';
+import { formatDateShort, daysAgo } from '@/lib/format';
 import type { DealPhase, MeetingTool } from '@/types';
 
 interface ReminderItem {
@@ -55,12 +56,21 @@ interface InquiryMonthlySummaryItem {
   total: number;
 }
 
+interface StaleDealItem {
+  id: string;
+  title: string;
+  phase: string;
+  updated_at: string;
+  contact: { full_name: string; company_name: string | null } | null;
+}
+
 interface DashboardData {
   reminders: ReminderItem[];
   phaseSummary: PhaseSummaryItem[];
   recentMeetings: RecentMeetingItem[];
   unhandledInquiries: number;
   inquiryMonthly: InquiryMonthlySummaryItem[];
+  staleDeals: StaleDealItem[];
 }
 
 function isOverdue(dateStr: string): boolean {
@@ -209,6 +219,43 @@ export default function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      {/* 放置案件アラート */}
+      {!loading && data && data.staleDeals.length > 0 && (
+        <Card className="border-red-500/30 bg-red-500/5">
+          <div className="p-4">
+            <h3 className="text-sm font-semibold text-red-400 flex items-center gap-2 mb-3">
+              <AlertTriangle className="h-4 w-4" />
+              放置案件（14日以上更新なし）
+              <Badge variant="danger">{data.staleDeals.length}件</Badge>
+            </h3>
+            <div className="space-y-2">
+              {data.staleDeals.map((deal) => (
+                <Link
+                  key={deal.id}
+                  href={`/deals/${deal.id}`}
+                  className="flex items-center justify-between border border-red-500/20 bg-red-500/5 p-3 hover:bg-red-500/10 transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="text-sm font-medium text-accent">
+                      {deal.title}
+                    </span>
+                    {deal.contact && (
+                      <span className="text-xs text-text-secondary ml-2">
+                        ({deal.contact.full_name}
+                        {deal.contact.company_name ? ` / ${deal.contact.company_name}` : ''})
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-red-400 font-medium whitespace-nowrap ml-3">
+                    {daysAgo(deal.updated_at)}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* 本日のリマインド */}
       <div>
