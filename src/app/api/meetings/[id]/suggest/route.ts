@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, isAuthError } from '@/lib/auth';
+import { parseParticipantName, namesMatch } from '@/lib/participant-parser';
 import type { ApiResult, ContactRow } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -18,6 +19,8 @@ interface ContactMatch {
   id: string;
   full_name: string;
   company_name: string | null;
+  /** 完全一致かどうか（スペース無視） */
+  exact: boolean;
 }
 
 interface ParticipantSuggestion {
@@ -25,8 +28,20 @@ interface ParticipantSuggestion {
   matches: ContactMatch[];
 }
 
+/** マッチなしの参加者（新規コンタクト候補） */
+interface UnmatchedParticipant {
+  /** tldv参加者名（生データ） */
+  participant_name: string;
+  /** パース済み氏名 */
+  parsed_name: string;
+  /** パース済み会社名 */
+  parsed_company: string | null;
+}
+
 interface SuggestResponse {
   suggestions: ParticipantSuggestion[];
+  /** 既存コンタクトにマッチしなかった参加者（新規コンタクト候補） */
+  unmatched: UnmatchedParticipant[];
 }
 
 // ---------------------------------------------------------------------------
@@ -68,23 +83,22 @@ export async function GET(
     const participants = (meeting.participants as string[]) ?? [];
     if (participants.length === 0) {
       return NextResponse.json({
-        data: { suggestions: [] },
+        data: { suggestions: [], unmatched: [] },
         error: null,
       });
     }
 
     // 各参加者名でcontactsをilike検索
     const suggestions: ParticipantSuggestion[] = [];
+    const unmatched: UnmatchedParticipant[] = [];
 
     for (const participantName of participants) {
-      // 参加者名から「名前（所属）」形式の名前部分を抽出
-      const nameOnly = participantName.includes('（')
-        ? participantName.split('（')[0].trim()
-        : participantName.includes('(')
-          ? participantName.split('(')[0].trim()
-          : participantName.trim();
+      // 参加者名をパース（"名前/会社名" や "名前（会社名）" に対応）
+      const parsed = parseParticipantName(participantName);
 
-      if (!nameOnly) continue;
+      if (!parsed.full_name) continue;
+
+      const nameOnly = parsed.full_name;
 
       const { data: matchedContacts } = await supabase
         .from('contacts')
@@ -97,17 +111,25 @@ export async function GET(
           id: c.id,
           full_name: c.full_name,
           company_name: c.company_name,
+          exact: namesMatch(c.full_name, nameOnly),
         }));
 
         suggestions.push({
           participant_name: participantName,
           matches,
         });
+      } else {
+        // マッチなし → 新規コンタクト候補として追加
+        unmatched.push({
+          participant_name: participantName,
+          parsed_name: parsed.full_name,
+          parsed_company: parsed.company_name,
+        });
       }
     }
 
     return NextResponse.json({
-      data: { suggestions },
+      data: { suggestions, unmatched },
       error: null,
     });
   } catch (err) {

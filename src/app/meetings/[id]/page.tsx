@@ -33,11 +33,19 @@ interface ContactMatch {
   id: string;
   full_name: string;
   company_name: string | null;
+  exact?: boolean;
 }
 
 interface ParticipantSuggestion {
   participant_name: string;
   matches: ContactMatch[];
+}
+
+/** マッチなしの参加者（新規コンタクト候補） */
+interface UnmatchedParticipant {
+  participant_name: string;
+  parsed_name: string;
+  parsed_company: string | null;
 }
 
 interface SelectOption {
@@ -108,8 +116,11 @@ export default function MeetingDetailPage() {
 
   // コンタクト候補サジェスト
   const [suggestions, setSuggestions] = useState<ParticipantSuggestion[]>([]);
+  const [unmatched, setUnmatched] = useState<UnmatchedParticipant[]>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [linkingParticipant, setLinkingParticipant] = useState<string | null>(null);
+  const [creatingContact, setCreatingContact] = useState<string | null>(null);
+  const [createContactMsg, setCreateContactMsg] = useState<string | null>(null);
 
   // AI要約生成
   const [summarizing, setSummarizing] = useState(false);
@@ -186,8 +197,9 @@ export default function MeetingDetailPage() {
     try {
       const res = await fetch(`/api/meetings/${id}/suggest`);
       if (res.ok) {
-        const json: { data: { suggestions: ParticipantSuggestion[] } } = await res.json();
+        const json: { data: { suggestions: ParticipantSuggestion[]; unmatched: UnmatchedParticipant[] } } = await res.json();
         setSuggestions(json.data.suggestions);
+        setUnmatched(json.data.unmatched ?? []);
       }
     } catch (e) {
       console.error('コンタクト候補の取得に失敗しました:', e);
@@ -278,6 +290,87 @@ export default function MeetingDetailPage() {
     }
   };
 
+  // 未マッチ参加者を新規コンタクトとして登録
+  const handleCreateContact = async (participant: UnmatchedParticipant) => {
+    if (!id) return;
+    setCreatingContact(participant.participant_name);
+    setCreateContactMsg(null);
+    try {
+      const res = await fetch(`/api/meetings/${id}/create-contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participant_names: [participant.participant_name],
+          auto_link_first: !meeting?.contact_id, // 未紐付けなら自動紐付け
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        setCreateContactMsg(json.error ?? 'コンタクトの作成に失敗しました');
+      } else {
+        const result = json.data;
+        if (result.created.length > 0) {
+          setCreateContactMsg(`${result.created[0].full_name} をコンタクトとして登録しました`);
+        } else if (result.skipped.length > 0) {
+          setCreateContactMsg(`${result.skipped[0].existing_contact_name} は既に登録済みです`);
+        }
+        // unmatchedリストから除去
+        setUnmatched((prev) => prev.filter((u) => u.participant_name !== participant.participant_name));
+        // 会議データとオプションを再取得
+        fetchMeeting();
+        fetchOptions();
+      }
+      setTimeout(() => setCreateContactMsg(null), 5000);
+    } catch (e) {
+      console.error('コンタクトの作成に失敗しました:', e);
+      setCreateContactMsg('コンタクトの作成に失敗しました');
+      setTimeout(() => setCreateContactMsg(null), 5000);
+    } finally {
+      setCreatingContact(null);
+    }
+  };
+
+  // 全未マッチ参加者を一括でコンタクト登録
+  const handleCreateAllContacts = async () => {
+    if (!id || unmatched.length === 0) return;
+    setCreatingContact('__all__');
+    setCreateContactMsg(null);
+    try {
+      const res = await fetch(`/api/meetings/${id}/create-contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participant_names: unmatched.map((u) => u.participant_name),
+          auto_link_first: !meeting?.contact_id,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        setCreateContactMsg(json.error ?? 'コンタクトの一括作成に失敗しました');
+      } else {
+        const result = json.data;
+        const msgs: string[] = [];
+        if (result.created.length > 0) {
+          msgs.push(`${result.created.length}件のコンタクトを作成しました`);
+        }
+        if (result.skipped.length > 0) {
+          msgs.push(`${result.skipped.length}件は既に登録済みです`);
+        }
+        setCreateContactMsg(msgs.join('、'));
+        setUnmatched([]);
+        fetchMeeting();
+        fetchOptions();
+      }
+      setTimeout(() => setCreateContactMsg(null), 5000);
+    } catch (e) {
+      console.error('コンタクトの一括作成に失敗しました:', e);
+      setCreateContactMsg('コンタクトの一括作成に失敗しました');
+      setTimeout(() => setCreateContactMsg(null), 5000);
+    } finally {
+      setCreatingContact(null);
+    }
+  };
+
   // AI提案の次アクションを採用する
   const handleAdoptAction = async () => {
     if (!meeting?.deal_id || !meeting.summary) return;
@@ -349,7 +442,7 @@ export default function MeetingDetailPage() {
 
   const handleSummarize = async (force: boolean) => {
     setSummarizing(true);
-    setSummarizeMsg(null);
+    setSummarizeMsg('AI要約を生成中です...（30秒〜2分程度かかります）');
     try {
       const url = `/api/meetings/${id}/summarize${force ? '?force=true' : ''}`;
       const res = await fetch(url, {
@@ -359,15 +452,16 @@ export default function MeetingDetailPage() {
       const json = await res.json();
       if (!res.ok || json.error) {
         setSummarizeMsg(json.error ?? 'AI要約の生成に失敗しました');
+        setTimeout(() => setSummarizeMsg(null), 10000);
       } else {
-        setSummarizeMsg('AI要約の生成を開始しました。しばらくしてからページを再読み込みしてください。');
-        // 少し待ってからデータを再取得
-        setTimeout(() => fetchMeeting(), 5000);
+        setSummarizeMsg('AI要約を生成しました');
+        // 即座にデータ再取得
+        await fetchMeeting();
+        setTimeout(() => setSummarizeMsg(null), 5000);
       }
-      setTimeout(() => setSummarizeMsg(null), 8000);
     } catch {
-      setSummarizeMsg('AI要約の生成に失敗しました');
-      setTimeout(() => setSummarizeMsg(null), 5000);
+      setSummarizeMsg('AI要約の生成に失敗しました。ネットワーク接続を確認してください。');
+      setTimeout(() => setSummarizeMsg(null), 10000);
     } finally {
       setSummarizing(false);
     }

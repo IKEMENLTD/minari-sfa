@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { fetchTranscript } from '@/lib/external/tldv';
 import { invokeSummarizeBackground } from '@/lib/netlify/background';
+import { autoLinkContactToMeeting } from '@/lib/auto-link-contacts';
 import type { ApiResult } from '@/types';
 import crypto from 'crypto';
 
@@ -174,6 +175,19 @@ export async function POST(
       return NextResponse.json(
         { data: null, error: '会議の保存に失敗しました' },
         { status: 500 }
+      );
+    }
+
+    // 参加者名から既存コンタクトを自動紐付け（完全一致のみ）
+    try {
+      await autoLinkContactToMeeting(
+        meeting.id as string,
+        (payload.participants ?? [])
+      );
+    } catch (linkErr) {
+      console.warn(
+        'Webhook: 自動紐付けに失敗しました:',
+        linkErr instanceof Error ? linkErr.message : linkErr
       );
     }
 

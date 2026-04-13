@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, isAuthError, requireRole } from '@/lib/auth';
 import { fetchMeetings, fetchTranscript } from '@/lib/external/tldv';
 import { invokeSummarizeBackground } from '@/lib/netlify/background';
+import { autoLinkContactToMeeting } from '@/lib/auto-link-contacts';
 import type { ApiResult, MeetingRow } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -15,6 +16,8 @@ interface SyncResult {
   errors: string[];
   /** バックグラウンドで要約処理中の会議数 */
   summarizing: number;
+  /** コンタクトに自動紐付けされた会議数 */
+  autoLinked: number;
   /** デバッグ: tldv APIから取得した会議数 */
   tldvTotal?: number;
   /** デバッグ: 既存の会議数 */
@@ -71,7 +74,7 @@ export async function POST(
 
     if (newMeetings.length === 0) {
       return NextResponse.json({
-        data: { synced: 0, meetings: [], errors: [], summarizing: 0, tldvTotal: allMeetings.length, existingCount: existingIds.size },
+        data: { synced: 0, meetings: [], errors: [], summarizing: 0, autoLinked: 0, tldvTotal: allMeetings.length, existingCount: existingIds.size },
         error: null,
       });
     }
@@ -79,6 +82,7 @@ export async function POST(
     const syncedMeetings: MeetingRow[] = [];
     const errors: string[] = [];
     const meetingIdsToSummarize: string[] = [];
+    let autoLinkedCount = 0;
 
     for (const tldvMeeting of newMeetings) {
       try {
@@ -97,6 +101,25 @@ export async function POST(
         if (meetingError || !meeting) {
           errors.push(`会議 ${tldvMeeting.id} の保存に失敗: ${meetingError?.message ?? '不明なエラー'}`);
           continue;
+        }
+
+        // 参加者名から既存コンタクトを自動紐付け（完全一致のみ）
+        try {
+          const linkedId = await autoLinkContactToMeeting(
+            meeting.id as string,
+            tldvMeeting.participants
+          );
+          if (linkedId) {
+            autoLinkedCount++;
+            // meeting オブジェクトにも反映
+            (meeting as Record<string, unknown>).contact_id = linkedId;
+          }
+        } catch (linkErr) {
+          // 自動紐付け失敗は致命的ではないのでログのみ
+          console.warn(
+            `[tldv-sync] 会議 ${tldvMeeting.id} の自動紐付けに失敗:`,
+            linkErr instanceof Error ? linkErr.message : linkErr
+          );
         }
 
         // 文字起こしを取得して保存
@@ -138,6 +161,7 @@ export async function POST(
         meetings: syncedMeetings,
         errors,
         summarizing: meetingIdsToSummarize.length,
+        autoLinked: autoLinkedCount,
         tldvTotal: allMeetings.length,
         existingCount: existingIds.size,
       },
