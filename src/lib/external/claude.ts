@@ -4,6 +4,7 @@ import {
   MEETING_SUMMARY_PROMPT,
   meetingSummarySchema,
 } from '@/lib/prompts/meeting-summary';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import type { MeetingSummaryResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,31 @@ interface ClaudeOptions {
 }
 
 /**
+ * Claude API キーを取得する。
+ * 1. 環境変数 CLAUDE_API_KEY を優先
+ * 2. 未設定の場合は app_settings テーブルから読み取り
+ */
+async function getClaudeApiKey(): Promise<string> {
+  const envKey = process.env.CLAUDE_API_KEY;
+  if (envKey) return envKey;
+
+  try {
+    const supabase = createServerSupabaseClient();
+    const { data } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'claude_api_key')
+      .single();
+
+    if (data?.value) return data.value as string;
+  } catch (err) {
+    console.warn('app_settings からの Claude API キー取得に失敗:', err instanceof Error ? err.message : err);
+  }
+
+  throw new Error('Claude API キーが設定されていません。環境変数または設定画面で設定してください。');
+}
+
+/**
  * Claude API にリクエストを送信する
  */
 async function callClaude(
@@ -36,10 +62,7 @@ async function callClaude(
   signal: AbortSignal,
   options?: ClaudeOptions
 ): Promise<string> {
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) {
-    throw new Error('環境変数 CLAUDE_API_KEY が設定されていません');
-  }
+  const apiKey = await getClaudeApiKey();
 
   const response = await fetch(CLAUDE_API_URL, {
     method: 'POST',

@@ -111,6 +111,15 @@ export async function fetchTranscript(meetingId: string): Promise<TldvTranscript
       text = data;
     } else if (typeof data.text === 'string') {
       text = data.text;
+    } else if (Array.isArray(data.data)) {
+      // tldv format: { data: [{ speaker, text, startTime, endTime }] }
+      text = data.data
+        .map((s: Record<string, unknown>) => {
+          const speaker = s.speaker_name ?? s.speaker ?? '';
+          const content = s.text ?? s.content ?? '';
+          return speaker ? `${speaker}: ${content}` : String(content);
+        })
+        .join('\n');
     } else if (Array.isArray(data.segments ?? data.entries)) {
       const segments = data.segments ?? data.entries;
       text = segments

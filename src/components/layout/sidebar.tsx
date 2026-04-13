@@ -11,6 +11,7 @@ import {
   Users,
   MessageSquare,
   PlusCircle,
+  Settings,
   Menu,
   X,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { href: '/contacts', label: 'コンタクト', icon: Users },
   { href: '/meetings', label: '会議記録', icon: FileText },
   { href: '/inquiries', label: '問い合わせ', icon: MessageSquare },
+  { href: '/settings', label: '設定', icon: Settings },
   { href: '/meetings/new', label: '会議を登録', icon: PlusCircle },
 ];
 

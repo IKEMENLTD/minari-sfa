@@ -45,6 +45,48 @@ interface SelectOption {
   label: string;
 }
 
+function formatTranscriptText(raw: string): string {
+  // If it's not JSON, return as-is
+  if (!raw.startsWith('{') && !raw.startsWith('[')) return raw;
+
+  try {
+    const parsed = JSON.parse(raw);
+
+    // tldv format: { data: [...] }
+    if (parsed.data && Array.isArray(parsed.data)) {
+      return parsed.data
+        .map((s: { speaker?: string; speaker_name?: string; text?: string; content?: string }) => {
+          const speaker = s.speaker_name ?? s.speaker ?? '';
+          const content = s.text ?? s.content ?? '';
+          return speaker ? `${speaker}: ${content}` : (content || '');
+        })
+        .filter(Boolean)
+        .join('\n');
+    }
+
+    // segments/entries format
+    const segments = parsed.segments ?? parsed.entries;
+    if (Array.isArray(segments)) {
+      return segments
+        .map((s: { speaker?: string; speaker_name?: string; text?: string; content?: string }) => {
+          const speaker = s.speaker_name ?? s.speaker ?? '';
+          const content = s.text ?? s.content ?? '';
+          return speaker ? `${speaker}: ${content}` : (content || '');
+        })
+        .filter(Boolean)
+        .join('\n');
+    }
+
+    // Plain text field
+    if (typeof parsed.text === 'string') return parsed.text;
+
+    // Fallback: return original
+    return raw;
+  } catch {
+    return raw;
+  }
+}
+
 export default function MeetingDetailPage() {
   const { id } = useParams<{ id: string }>();
 
@@ -510,7 +552,7 @@ export default function MeetingDetailPage() {
               <CardContent>
                 {meeting.transcript ? (
                   <div className="text-sm text-text whitespace-pre-wrap leading-relaxed max-h-[600px] overflow-y-auto">
-                    {meeting.transcript.full_text}
+                    {formatTranscriptText(meeting.transcript.full_text)}
                   </div>
                 ) : (
                   <p className="text-sm text-text-secondary py-4 text-center">議事録なし</p>
