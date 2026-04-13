@@ -59,16 +59,27 @@ export async function fetchMeetings(
     // TLDVのレスポンス形式に合わせてマッピング
     const meetings = Array.isArray(data) ? data : (data.results ?? data.meetings ?? []);
 
-    return meetings.map((m: Record<string, unknown>) => ({
-      id: String(m.id ?? ''),
-      title: String(m.title ?? m.name ?? ''),
-      date: String(m.date ?? m.happened_at ?? m.created_at ?? ''),
-      duration: typeof m.duration === 'number' ? m.duration : null,
-      participants: Array.isArray(m.participants)
-        ? m.participants.map((p: Record<string, unknown>) =>
-            typeof p === 'string' ? p : String(p.name ?? p.email ?? ''))
-        : [],
-    }));
+    return meetings.map((m: Record<string, unknown>) => {
+      // 参加者: invitees + organizer を統合
+      const invitees = Array.isArray(m.invitees) ? m.invitees : [];
+      const participantNames: string[] = invitees.map(
+        (p: Record<string, unknown>) =>
+          typeof p === 'string' ? p : String(p.name ?? p.email ?? '')
+      ).filter(Boolean);
+      if (m.organizer && typeof m.organizer === 'object') {
+        const org = m.organizer as Record<string, unknown>;
+        const orgName = String(org.name ?? org.email ?? '');
+        if (orgName) participantNames.unshift(orgName);
+      }
+
+      return {
+        id: String(m.id ?? ''),
+        title: String(m.title ?? m.name ?? ''),
+        date: String(m.happenedAt ?? m.happened_at ?? m.date ?? m.created_at ?? ''),
+        duration: typeof m.duration === 'number' ? m.duration : null,
+        participants: participantNames,
+      };
+    });
   } finally {
     clearTimeout(timeoutId);
   }
@@ -117,5 +128,8 @@ export async function fetchNewMeetings(
   existingSourceIds: Set<string>
 ): Promise<TldvMeeting[]> {
   const meetings = await fetchMeetings({ pageSize: 50 });
-  return meetings.filter((m) => !existingSourceIds.has(m.id));
+  console.log(`[tldv] fetchMeetings returned ${meetings.length} meetings:`, meetings.map(m => m.id));
+  const newOnes = meetings.filter((m) => !existingSourceIds.has(m.id));
+  console.log(`[tldv] After filtering existing (${existingSourceIds.size}): ${newOnes.length} new`);
+  return newOnes;
 }

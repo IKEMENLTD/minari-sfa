@@ -149,7 +149,7 @@ function MeetingsContent() {
       }
       const result = json.data;
       if (result.synced === 0) {
-        setSyncMessage('新しい会議はありませんでした');
+        setSyncMessage(`新しい会議はありませんでした（tldv: ${result.tldvTotal ?? '?'}件, DB既存: ${result.existingCount ?? '?'}件）`);
       } else {
         setSyncMessage(`${result.synced}件の会議を同期しました${result.errors.length > 0 ? `（${result.errors.length}件エラー）` : ''}`);
         fetchMeetings();

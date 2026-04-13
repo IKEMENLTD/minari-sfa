@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, isAuthError, requireRole } from '@/lib/auth';
-import { fetchNewMeetings, fetchTranscript } from '@/lib/external/tldv';
+import { fetchMeetings, fetchTranscript } from '@/lib/external/tldv';
 import { invokeSummarizeBackground } from '@/lib/netlify/background';
 import type { ApiResult, MeetingRow } from '@/types';
 
@@ -15,6 +15,10 @@ interface SyncResult {
   errors: string[];
   /** バックグラウンドで要約処理中の会議数 */
   summarizing: number;
+  /** デバッグ: tldv APIから取得した会議数 */
+  tldvTotal?: number;
+  /** デバッグ: 既存の会議数 */
+  existingCount?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,12 +60,18 @@ export async function POST(
         .filter(Boolean)
     );
 
-    // TLDV APIから新規会議を取得
-    const newMeetings = await fetchNewMeetings(existingIds);
+    // TLDV APIから全会議を取得
+    const allMeetings = await fetchMeetings({ pageSize: 50 });
+    const newMeetings = allMeetings.filter((m) => !existingIds.has(m.id));
+
+    console.log(`[tldv-sync] tldv全件: ${allMeetings.length}, 既存: ${existingIds.size}, 新規: ${newMeetings.length}`);
+    if (allMeetings.length > 0) {
+      console.log(`[tldv-sync] 最初の会議ID: ${allMeetings[0].id}, title: ${allMeetings[0].title}`);
+    }
 
     if (newMeetings.length === 0) {
       return NextResponse.json({
-        data: { synced: 0, meetings: [], errors: [], summarizing: 0 },
+        data: { synced: 0, meetings: [], errors: [], summarizing: 0, tldvTotal: allMeetings.length, existingCount: existingIds.size },
         error: null,
       });
     }
