@@ -20,3 +20,6 @@ npm-debug.log*
 
 # Dev docs (not for production)
 PLAN.md
+
+# Local Netlify folder
+.netlify
