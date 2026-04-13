@@ -167,6 +167,9 @@ export default function MeetingDetailPage() {
     }
   }, [id]);
 
+  // 全案件を保持（フィルタ用）
+  const [allDeals, setAllDeals] = useState<(DealWithContact & { contact_id: string })[]>([]);
+
   const fetchOptions = useCallback(async () => {
     try {
       const [cRes, dRes] = await Promise.all([
@@ -182,15 +185,36 @@ export default function MeetingDetailPage() {
       }
       if (dRes.ok) {
         const dJson: { data: DealWithContact[] } = await dRes.json();
-        setDeals(dJson.data.map((d) => ({
-          value: d.id,
-          label: d.title,
-        })));
+        setAllDeals(dJson.data as (DealWithContact & { contact_id: string })[]);
       }
     } catch (e) {
       console.error('選択肢の取得に失敗しました:', e);
     }
   }, []);
+
+  // コンタクトが変わったら案件リストをフィルタ
+  useEffect(() => {
+    if (contactId) {
+      // 選択中コンタクトの案件を先頭に、それ以外も表示
+      const related = allDeals.filter(d => d.contact_id === contactId);
+      const others = allDeals.filter(d => d.contact_id !== contactId);
+      const options: SelectOption[] = [];
+      if (related.length > 0) {
+        related.forEach(d => options.push({ value: d.id, label: `★ ${d.title}` }));
+      }
+      if (others.length > 0) {
+        others.forEach(d => options.push({ value: d.id, label: d.title }));
+      }
+      setDeals(options);
+
+      // 案件が未選択で、関連案件が1件だけなら自動選択
+      if (!dealId && related.length === 1) {
+        setDealId(related[0].id);
+      }
+    } else {
+      setDeals(allDeals.map(d => ({ value: d.id, label: d.title })));
+    }
+  }, [contactId, allDeals, dealId]);
 
   // コンタクト候補を自動取得（未紐付けの場合のみ）
   const fetchSuggestions = useCallback(async () => {
