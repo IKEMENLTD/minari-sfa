@@ -109,7 +109,7 @@ const MEETING_SUMMARY_PROMPT = `あなたは営業会議の議事録から詳細
 // ---------------------------------------------------------------------------
 
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
-const API_TIMEOUT_MS = 120000;
+const API_TIMEOUT_MS = 600000; // 10分（Background Functionは最大15分実行可能）
 
 /**
  * JSON レスポンスをバリデーションする（zod の代わりに手動チェック）

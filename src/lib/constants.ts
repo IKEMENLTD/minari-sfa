@@ -71,7 +71,7 @@ export const INQUIRY_STATUS_LABEL: Record<string, string> = {
 };
 
 /** API タイムアウト（ミリ秒） */
-export const API_TIMEOUT_MS = 120_000;
+export const API_TIMEOUT_MS = 600_000; // 10分（Background Functionは最大15分実行可能）
 
 /** TLDV API タイムアウト（ミリ秒） */
 export const TLDV_API_TIMEOUT_MS = 30_000;
