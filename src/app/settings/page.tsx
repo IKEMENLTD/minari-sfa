@@ -152,6 +152,7 @@ export default function SettingsPage() {
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
+  const [dirty, setDirty] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<Record<string, { type: 'success' | 'error'; message: string }>>({});
   const [loading, setLoading] = useState(true);
   const [dbWarning, setDbWarning] = useState<string | null>(null);
@@ -173,8 +174,9 @@ export default function SettingsPage() {
         }
         setValues(vals);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('設定の読み込みに失敗:', err);
+      setDbWarning('設定の読み込みに失敗しました。ネットワーク接続またはログイン状態を確認してください。');
     } finally {
       setLoading(false);
     }
@@ -188,18 +190,15 @@ export default function SettingsPage() {
     const value = values[key];
     if (value === undefined) return;
 
-    // Don't save if value is still the masked placeholder
-    if (value.startsWith('****') && value === settings.find((s) => s.key === key)?.value) {
+    // dirtyフラグで変更チェック（マスク値の部分編集による誤保存を防止）
+    if (!dirty[key]) {
       setFeedback((prev) => ({ ...prev, [key]: { type: 'error', message: '新しい値を入力してください' } }));
+      setTimeout(() => setFeedback((prev) => { const n = { ...prev }; delete n[key]; return n; }), 5000);
       return;
     }
 
     setSaving((prev) => ({ ...prev, [key]: true }));
-    setFeedback((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
+    setFeedback((prev) => { const n = { ...prev }; delete n[key]; return n; });
 
     try {
       const res = await fetch('/api/settings', {
@@ -212,11 +211,13 @@ export default function SettingsPage() {
         setFeedback((prev) => ({ ...prev, [key]: { type: 'error', message: json.error } }));
       } else {
         setFeedback((prev) => ({ ...prev, [key]: { type: 'success', message: '保存しました' } }));
-        // Re-fetch to get masked values
+        setDirty((prev) => ({ ...prev, [key]: false }));
         await fetchSettings();
       }
+      setTimeout(() => setFeedback((prev) => { const n = { ...prev }; delete n[key]; return n; }), 5000);
     } catch {
       setFeedback((prev) => ({ ...prev, [key]: { type: 'error', message: '保存に失敗しました' } }));
+      setTimeout(() => setFeedback((prev) => { const n = { ...prev }; delete n[key]; return n; }), 5000);
     } finally {
       setSaving((prev) => ({ ...prev, [key]: false }));
     }
@@ -234,10 +235,13 @@ export default function SettingsPage() {
       } else {
         setFeedback((prev) => ({ ...prev, [key]: { type: 'success', message: '削除しました' } }));
         setValues((prev) => { const next = { ...prev }; delete next[key]; return next; });
+        setDirty((prev) => ({ ...prev, [key]: false }));
         await fetchSettings();
       }
+      setTimeout(() => setFeedback((prev) => { const n = { ...prev }; delete n[key]; return n; }), 5000);
     } catch {
       setFeedback((prev) => ({ ...prev, [key]: { type: 'error', message: '削除に失敗しました' } }));
+      setTimeout(() => setFeedback((prev) => { const n = { ...prev }; delete n[key]; return n; }), 5000);
     } finally {
       setDeleting((prev) => ({ ...prev, [key]: false }));
     }
@@ -344,7 +348,7 @@ ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;`}</pre>
                           id={field.key}
                           type={isVisible ? 'text' : 'password'}
                           value={currentValue}
-                          onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                          onChange={(e) => { setValues((prev) => ({ ...prev, [field.key]: e.target.value })); setDirty((prev) => ({ ...prev, [field.key]: true })); }}
                           onFocus={() => {
                             // Clear masked value on focus so user can type fresh
                             if (currentValue.startsWith('****')) {
