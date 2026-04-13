@@ -148,8 +148,12 @@ function MeetingsContent() {
         return;
       }
       const result = json.data;
-      if (result.synced === 0) {
-        setSyncMessage(`新しい会議はありませんでした（tldv: ${result.tldvTotal ?? '?'}件, DB既存: ${result.existingCount ?? '?'}件）`);
+      const debugInfo = `（tldv: ${result.tldvTotal ?? '?'}件, DB既存: ${result.existingCount ?? '?'}件）`;
+      const errorInfo = result.errors?.length > 0 ? `\nエラー: ${result.errors.slice(0, 3).join(' / ')}` : '';
+      if (result.synced === 0 && (!result.errors || result.errors.length === 0)) {
+        setSyncMessage(`新しい会議はありませんでした${debugInfo}`);
+      } else if (result.synced === 0) {
+        setSyncMessage(`${result.tldvTotal ?? '?'}件取得しましたが全て保存に失敗しました${debugInfo}${errorInfo}`);
       } else {
         setSyncMessage(`${result.synced}件の会議を同期しました${result.errors.length > 0 ? `（${result.errors.length}件エラー）` : ''}`);
         fetchMeetings();
@@ -187,7 +191,7 @@ function MeetingsContent() {
       </div>
 
       {syncMessage && (
-        <div className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
+        <div className="rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent whitespace-pre-wrap">
           {syncMessage}
         </div>
       )}

@@ -138,6 +138,8 @@ export async function POST(
         meetings: syncedMeetings,
         errors,
         summarizing: meetingIdsToSummarize.length,
+        tldvTotal: allMeetings.length,
+        existingCount: existingIds.size,
       },
       error: null,
     });

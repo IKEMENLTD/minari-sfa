@@ -72,10 +72,19 @@ export async function fetchMeetings(
         if (orgName) participantNames.unshift(orgName);
       }
 
+      // 日付をISO 8601形式に変換（Supabase/PostgreSQLが受け付ける形式）
+      const rawDate = String(m.happenedAt ?? m.happened_at ?? m.date ?? m.created_at ?? '');
+      let isoDate: string;
+      try {
+        isoDate = rawDate ? new Date(rawDate).toISOString() : new Date().toISOString();
+      } catch {
+        isoDate = new Date().toISOString();
+      }
+
       return {
         id: String(m.id ?? ''),
         title: String(m.title ?? m.name ?? ''),
-        date: String(m.happenedAt ?? m.happened_at ?? m.date ?? m.created_at ?? ''),
+        date: isoDate,
         duration: typeof m.duration === 'number' ? m.duration : null,
         participants: participantNames,
       };
