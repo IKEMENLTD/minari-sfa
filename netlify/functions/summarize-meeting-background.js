@@ -147,7 +147,19 @@ function validateSummaryResult(raw) {
   };
 }
 
+function truncateTranscript(text, maxChars) {
+  maxChars = maxChars || 25000;
+  if (text.length <= maxChars) return text;
+  var headSize = Math.floor(maxChars * 0.6);
+  var tailSize = Math.floor(maxChars * 0.35);
+  var head = text.slice(0, headSize);
+  var tail = text.slice(-tailSize);
+  var omitted = text.length - headSize - tailSize;
+  return head + "\n\n[... 中間 " + omitted.toLocaleString() + " 文字省略 ...]\n\n" + tail;
+}
+
 async function callClaudeApi(transcript, apiKey, signal) {
+  transcript = truncateTranscript(transcript);
   const response = await fetch(CLAUDE_API_URL, {
     method: "POST",
     headers: {

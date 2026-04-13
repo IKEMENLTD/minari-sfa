@@ -104,6 +104,22 @@ async function callClaude(
 // ---------------------------------------------------------------------------
 
 /**
+ * 長い議事録を要約可能なサイズに切り詰める。
+ * 先頭と末尾を残し、中間を省略する。
+ */
+function truncateTranscript(text: string, maxChars: number = 25000): string {
+  if (text.length <= maxChars) return text;
+
+  const headSize = Math.floor(maxChars * 0.6); // 先頭60%
+  const tailSize = Math.floor(maxChars * 0.35); // 末尾35%
+  const head = text.slice(0, headSize);
+  const tail = text.slice(-tailSize);
+  const omitted = text.length - headSize - tailSize;
+
+  return `${head}\n\n[... 中間 ${omitted.toLocaleString()} 文字省略 ...]\n\n${tail}`;
+}
+
+/**
  * 会議の議事録を要約し、コンタクト名推定・参加者抽出を行う
  */
 export async function summarizeMeeting(
@@ -112,9 +128,11 @@ export async function summarizeMeeting(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
+  const trimmed = truncateTranscript(transcript);
+
   try {
     const result = await callClaude(
-      [{ role: 'user', content: `以下の議事録を分析してください:\n\n${transcript}` }],
+      [{ role: 'user', content: `以下の議事録を分析してください:\n\n${trimmed}` }],
       MEETING_SUMMARY_PROMPT,
       controller.signal,
       { temperature: 0 }
