@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Claude モデル定数
 // ---------------------------------------------------------------------------
 
-export const CLAUDE_SONNET = 'claude-sonnet-4-20250514';
+export const CLAUDE_SONNET = 'claude-sonnet-4-6';
 
 // ---------------------------------------------------------------------------
 // 会議要約プロンプト（Background Function / APIルート 共通）

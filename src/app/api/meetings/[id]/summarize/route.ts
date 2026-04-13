@@ -77,7 +77,7 @@ export async function POST(
     const { error: insertError } = await supabase.from('summaries').insert({
       meeting_id: id,
       summary_text: result.summary,
-      model_used: 'claude-sonnet-4-20250514',
+      model_used: 'claude-sonnet-4-6',
       suggested_next_action: result.suggestedNextAction ?? null,
       suggested_next_action_date: result.suggestedNextActionDate ?? null,
     });

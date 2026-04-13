@@ -14,7 +14,7 @@ const { createClient } = require("@supabase/supabase-js");
 // 定数（src/lib/prompts/meeting-summary.ts からインライン）
 // ---------------------------------------------------------------------------
 
-const CLAUDE_SONNET = "claude-sonnet-4-20250514";
+const CLAUDE_SONNET = "claude-sonnet-4-6";
 
 const MEETING_SUMMARY_PROMPT = `あなたは営業会議の議事録作成専門AIです。
 
