@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Eye, EyeOff, Save, AlertCircle, CheckCircle2, Wrench } from 'lucide-react';
+import { Settings, Eye, EyeOff, Save, AlertCircle, CheckCircle2, Wrench, HelpCircle, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -34,6 +34,117 @@ const SETTING_FIELDS: SettingField[] = [
     description: 'tl;dv Webhook の署名検証シークレット。',
   },
 ];
+
+// ---------------------------------------------------------------------------
+// APIキー取得ガイド
+// ---------------------------------------------------------------------------
+
+function ApiKeyGuide({ guideKey }: { guideKey: string }) {
+  const [open, setOpen] = useState(false);
+
+  if (guideKey === 'claude_api_key') {
+    return (
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="flex items-center gap-1.5 text-xs text-accent hover:underline"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+          Claude APIキーの取得方法
+          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
+        {open && (
+          <div className="mt-2 rounded-md border border-border bg-muted/50 p-4 text-xs text-text-secondary space-y-3">
+            <p className="font-medium text-text">Claude APIキーの取得手順</p>
+
+            <div className="space-y-2">
+              <p className="font-medium text-text">1. Anthropicアカウントを作成</p>
+              <p>
+                <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline inline-flex items-center gap-1">
+                  Anthropic Console <ExternalLink className="h-3 w-3" />
+                </a>
+                にアクセスし、「Sign Up」からアカウントを作成します。
+              </p>
+              <p>Google/GitHub アカウントまたはメールアドレスで登録できます。</p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-medium text-text">2. クレジットを購入（初回のみ）</p>
+              <p>ログイン後、左メニューの「Billing」をクリックします。</p>
+              <p>「Add Credits」から利用分のクレジットを購入します（最低 $5〜）。</p>
+              <p className="text-yellow-600">* APIは従量課金制です。AI要約1回あたり約 $0.01〜$0.05 程度です。</p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-medium text-text">3. APIキーを発行</p>
+              <p>左メニューの「API Keys」をクリックします。</p>
+              <p>「Create Key」ボタンを押し、名前（例: deal-board）を入力して作成します。</p>
+              <p className="text-yellow-600">* キーは作成時に一度だけ表示されます。必ずコピーしてください。</p>
+              <p>形式: <code className="bg-background px-1.5 py-0.5 rounded text-text font-mono">sk-ant-api03-xxxx...xxxx</code></p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-medium text-text">4. このページに貼り付けて保存</p>
+              <p>上の入力欄にコピーしたキーを貼り付け、「保存」ボタンを押してください。</p>
+              <p>保存後、会議詳細ページの「AI要約を生成」ボタンが使えるようになります。</p>
+            </div>
+
+            <div className="rounded border border-yellow-500/30 bg-yellow-500/10 p-3 space-y-1">
+              <p className="font-medium text-yellow-600">セキュリティに関する注意</p>
+              <p>APIキーは第三者に共有しないでください。</p>
+              <p>万が一漏洩した場合は、Anthropic Consoleから即座に無効化（Revoke）してください。</p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (guideKey === 'tldv_api_key') {
+    return (
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="flex items-center gap-1.5 text-xs text-accent hover:underline"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+          tl;dv APIキーの取得方法
+          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
+        {open && (
+          <div className="mt-2 rounded-md border border-border bg-muted/50 p-4 text-xs text-text-secondary space-y-3">
+            <p className="font-medium text-text">tl;dv APIキーの取得手順</p>
+
+            <div className="space-y-2">
+              <p className="font-medium text-text">1. tl;dv にログイン</p>
+              <p>
+                <a href="https://tldv.io/app/settings/integrations" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline inline-flex items-center gap-1">
+                  tl;dv 設定ページ <ExternalLink className="h-3 w-3" />
+                </a>
+                にアクセスします。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-medium text-text">2. API Integrations からキーを発行</p>
+              <p>Settings &gt; Integrations &gt; API から「Generate API Key」をクリックします。</p>
+              <p>表示されたキーをコピーしてください。</p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-medium text-text">3. このページに貼り付けて保存</p>
+              <p>上の入力欄に貼り付け、「保存」ボタンを押してください。</p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingItem[]>([]);
@@ -229,6 +340,7 @@ export default function SettingsPage() {
                         {fb.message}
                       </div>
                     )}
+                    <ApiKeyGuide guideKey={field.key} />
                   </div>
                 );
               })}

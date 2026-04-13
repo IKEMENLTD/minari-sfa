@@ -107,7 +107,7 @@ export async function GET(
       summary_text: summaryMap[m.id as string] ?? null,
     }));
 
-    return NextResponse.json({ data: meetings as MeetingRow[], error: null });
+    return NextResponse.json({ data: meetings as unknown as MeetingRow[], error: null });
   } catch (err) {
     console.error('会議一覧の取得中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(

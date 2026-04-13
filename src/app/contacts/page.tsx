@@ -304,7 +304,7 @@ function ContactsContent() {
         </div>
       ) : contacts.length === 0 ? (
         <div className="py-16 text-center text-sm text-text-secondary space-y-3">
-          {searchSubmitted || tier !== 'all' ? (
+          {searchQuery || tier ? (
             <p>条件に一致するコンタクトがありません</p>
           ) : (
             <>

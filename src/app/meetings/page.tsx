@@ -257,7 +257,7 @@ function MeetingsContent() {
         </div>
       ) : meetings.length === 0 ? (
         <div className="py-16 text-center text-sm text-text-secondary space-y-3">
-          {searchSubmitted || filter === 'unlinked' ? (
+          {searchQuery || unlinked === 'true' ? (
             <p>条件に一致する会議記録がありません</p>
           ) : (
             <>
