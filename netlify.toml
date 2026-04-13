@@ -10,6 +10,11 @@
 
 [functions]
   node_bundler = "esbuild"
+  external_node_modules = ["@supabase/supabase-js"]
+
+# Next.js API Routeのタイムアウトを延長（AI要約生成に120秒必要）
+[functions."*"]
+  execution_timeout = 120
 
 # Next.jsプラグインが /.netlify/functions/* パスを横取りしないよう除外設定
 [[redirects]]

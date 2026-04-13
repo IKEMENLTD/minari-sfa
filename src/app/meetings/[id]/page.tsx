@@ -444,7 +444,7 @@ export default function MeetingDetailPage() {
 
   const handleSummarize = async (force: boolean) => {
     setSummarizing(true);
-    setSummarizeMsg('AI要約の生成をリクエスト中...');
+    setSummarizeMsg('AI要約を生成中です...（30秒〜2分程度かかります）');
     try {
       const url = `/api/meetings/${id}/summarize${force ? '?force=true' : ''}`;
       const res = await fetch(url, {
@@ -454,44 +454,17 @@ export default function MeetingDetailPage() {
       const json = await res.json();
       if (!res.ok || json.error) {
         setSummarizeMsg(json.error ?? 'AI要約の生成に失敗しました');
-        setSummarizing(false);
         setTimeout(() => setSummarizeMsg(null), 10000);
-        return;
+      } else {
+        setSummarizeMsg('AI要約を生成しました');
+        await fetchMeeting();
+        setTimeout(() => setSummarizeMsg(null), 5000);
       }
-
-      // Background Functionで非同期生成中 — ポーリングで完了を待つ
-      setSummarizeMsg('AI要約を生成中です...（30秒〜2分程度かかります）');
-      let attempts = 0;
-      const maxAttempts = 24; // 最大2分 (5秒 × 24)
-      const poll = async () => {
-        attempts++;
-        try {
-          const meetingRes = await fetch(`/api/meetings/${id}?include_transcript=true`);
-          if (meetingRes.ok) {
-            const meetingJson = await meetingRes.json();
-            if (meetingJson.data?.summary) {
-              setMeeting(meetingJson.data);
-              setSummarizeMsg('AI要約を生成しました');
-              setSummarizing(false);
-              setTimeout(() => setSummarizeMsg(null), 5000);
-              return;
-            }
-          }
-        } catch { /* ignore polling errors */ }
-        if (attempts < maxAttempts) {
-          setSummarizeMsg(`AI要約を生成中です...（${attempts * 5}秒経過）`);
-          setTimeout(poll, 5000);
-        } else {
-          setSummarizeMsg('生成に時間がかかっています。ページを再読み込みして確認してください。');
-          setSummarizing(false);
-          setTimeout(() => setSummarizeMsg(null), 15000);
-        }
-      };
-      setTimeout(poll, 5000);
     } catch {
       setSummarizeMsg('AI要約の生成に失敗しました。ネットワーク接続を確認してください。');
-      setSummarizing(false);
       setTimeout(() => setSummarizeMsg(null), 10000);
+    } finally {
+      setSummarizing(false);
     }
   };
 
