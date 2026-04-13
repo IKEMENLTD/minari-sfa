@@ -153,6 +153,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<Record<string, { type: 'success' | 'error'; message: string }>>({});
   const [loading, setLoading] = useState(true);
+  const [dbWarning, setDbWarning] = useState<string | null>(null);
   const [fixLoading, setFixLoading] = useState(false);
   const [fixFeedback, setFixFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -160,9 +161,11 @@ export default function SettingsPage() {
     try {
       const res = await fetch('/api/settings');
       const json = await res.json();
+      if (json.warning) {
+        setDbWarning(json.warning);
+      }
       if (json.data) {
         setSettings(json.data);
-        // Initialize values with masked values from server
         const vals: Record<string, string> = {};
         for (const s of json.data as SettingItem[]) {
           vals[s.key] = s.value;
@@ -253,6 +256,33 @@ export default function SettingsPage() {
         <Settings className="h-6 w-6 text-accent" />
         <h1 className="text-xl font-bold text-text">設定</h1>
       </div>
+
+      {/* DB Warning */}
+      {dbWarning && (
+        <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm space-y-2">
+          <div className="flex items-center gap-2 text-yellow-600 font-medium">
+            <AlertCircle className="h-4 w-4" />
+            データベースのセットアップが必要です
+          </div>
+          <p className="text-xs text-text-secondary">{dbWarning}</p>
+          <div className="text-xs text-text-secondary space-y-1">
+            <p>以下の手順でテーブルを作成してください：</p>
+            <ol className="list-decimal list-inside space-y-1 ml-2">
+              <li>Supabase ダッシュボードにログイン</li>
+              <li>左メニューの「SQL Editor」を開く</li>
+              <li>以下のSQLを貼り付けて「Run」をクリック</li>
+            </ol>
+            <pre className="mt-2 p-3 bg-background rounded border border-border overflow-x-auto text-[11px] font-mono whitespace-pre">{`CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;`}</pre>
+            <p className="mt-2">実行後、このページをリロードしてください。</p>
+          </div>
+        </div>
+      )}
 
       {/* API Keys Section */}
       <Card>

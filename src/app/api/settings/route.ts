@@ -25,6 +25,11 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
       .order('key');
 
     if (error) {
+      // テーブルが存在しない場合は空配列を返す（マイグレーション未適用時）
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        console.warn('app_settings テーブルが存在しません。Supabase SQL Editor で 003_settings.sql を実行してください。');
+        return NextResponse.json({ data: [] as SettingItem[], error: null, warning: 'app_settingsテーブルが未作成です。Supabase SQL Editorでマイグレーションを実行してください。' });
+      }
       console.error('設定の取得に失敗しました:', error.message);
       return NextResponse.json({ data: null, error: '設定の取得に失敗しました' }, { status: 500 });
     }
@@ -80,6 +85,9 @@ export async function PATCH(request: NextRequest): Promise<NextResponse<ApiResul
       );
 
     if (error) {
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return NextResponse.json({ data: null, error: 'app_settingsテーブルが未作成です。Supabase SQL Editorで003_settings.sqlを実行してください。' }, { status: 500 });
+      }
       console.error('設定の保存に失敗しました:', error.message);
       return NextResponse.json({ data: null, error: '設定の保存に失敗しました' }, { status: 500 });
     }
