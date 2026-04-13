@@ -485,7 +485,7 @@ export default function MeetingDetailPage() {
 
   const handleSummarize = async (force: boolean) => {
     setSummarizing(true);
-    setSummarizeMsg('AI要約を生成中です...（30秒〜2分程度かかります）');
+    setSummarizeMsg('AI要約の生成をリクエスト中...');
     try {
       const url = `/api/meetings/${id}/summarize${force ? '?force=true' : ''}`;
       const res = await fetch(url, {
@@ -495,17 +495,45 @@ export default function MeetingDetailPage() {
       const json = await res.json();
       if (!res.ok || json.error) {
         setSummarizeMsg(json.error ?? 'AI要約の生成に失敗しました');
+        setSummarizing(false);
         setTimeout(() => setSummarizeMsg(null), 10000);
-      } else {
-        setSummarizeMsg('AI要約を生成しました');
-        await fetchMeeting();
-        setTimeout(() => setSummarizeMsg(null), 5000);
+        return;
       }
+
+      // Background Functionで非同期生成中 — ポーリングで完了を待つ
+      setSummarizeMsg('AI要約を生成中です...（30秒〜2分程度かかります）');
+      let attempts = 0;
+      const maxAttempts = 36; // 最大3分 (5秒 × 36)
+      const poll = async () => {
+        attempts++;
+        try {
+          const meetingRes = await fetch(`/api/meetings/${id}?include_transcript=true`);
+          if (meetingRes.ok) {
+            const meetingJson = await meetingRes.json();
+            if (meetingJson.data?.summary) {
+              setMeeting(meetingJson.data);
+              setContactId(meetingJson.data.contact_id ?? '');
+              setDealId(meetingJson.data.deal_id ?? '');
+              setSummarizeMsg('AI要約を生成しました');
+              setSummarizing(false);
+              setTimeout(() => setSummarizeMsg(null), 5000);
+              return;
+            }
+          }
+        } catch { /* ignore */ }
+        if (attempts < maxAttempts) {
+          setSummarizeMsg(`AI要約を生成中です...（${attempts * 5}秒経過）`);
+          setTimeout(poll, 5000);
+        } else {
+          setSummarizeMsg('生成に時間がかかっています。しばらくしてからページを再読み込みしてください。');
+          setSummarizing(false);
+        }
+      };
+      setTimeout(poll, 5000);
     } catch {
       setSummarizeMsg('AI要約の生成に失敗しました。ネットワーク接続を確認してください。');
-      setTimeout(() => setSummarizeMsg(null), 10000);
-    } finally {
       setSummarizing(false);
+      setTimeout(() => setSummarizeMsg(null), 10000);
     }
   };
 
@@ -527,14 +555,27 @@ export default function MeetingDetailPage() {
 
       {/* ヘッダー情報 */}
       <div className="flex items-start gap-4">
-        {/* サムネイル */}
-        <div className="shrink-0 w-16 h-16 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
-          {meeting.thumbnail_url ? (
+        {/* サムネイル / tldvリンク */}
+        {meeting.thumbnail_url?.startsWith('https://tldv.io') ? (
+          <a
+            href={meeting.thumbnail_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 w-16 h-16 rounded-lg bg-accent/10 border border-accent/20 flex flex-col items-center justify-center hover:bg-accent/20 transition-colors"
+            title="tl;dvで開く"
+          >
+            <Video className="h-5 w-5 text-accent" />
+            <span className="text-[9px] text-accent mt-0.5">tl;dv</span>
+          </a>
+        ) : meeting.thumbnail_url ? (
+          <div className="shrink-0 w-16 h-16 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
             <img src={meeting.thumbnail_url} alt="" className="w-full h-full object-cover" />
-          ) : (
+          </div>
+        ) : (
+          <div className="shrink-0 w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
             <Video className="h-6 w-6 text-text-secondary" />
-          )}
-        </div>
+          </div>
+        )}
         <div className="min-w-0">
           <h1 className="text-lg font-semibold text-text">
             {meeting.title || new Date(meeting.meeting_date).toLocaleDateString('ja-JP', {

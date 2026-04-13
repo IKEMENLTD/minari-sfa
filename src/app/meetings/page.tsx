@@ -283,13 +283,10 @@ function MeetingsContent() {
                 href={`/meetings/${m.id}`}
                 className="flex items-start gap-3 border border-border bg-surface p-3 hover:bg-muted/50"
               >
-                {/* サムネイル */}
-                <div className="shrink-0 w-12 h-12 rounded bg-muted flex items-center justify-center overflow-hidden">
-                  {m.thumbnail_url ? (
-                    <img src={m.thumbnail_url} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <Video className="h-5 w-5 text-text-secondary" />
-                  )}
+                {/* tldvリンク / サムネイル */}
+                <div className="shrink-0 w-12 h-12 rounded bg-accent/10 border border-accent/20 flex flex-col items-center justify-center">
+                  <Video className="h-4 w-4 text-accent" />
+                  <span className="text-[8px] text-accent">tl;dv</span>
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between mb-1">
@@ -333,13 +330,18 @@ function MeetingsContent() {
                   {meetings.map((m) => (
                     <TableRow key={m.id}>
                       <TableCell>
-                        <div className="w-10 h-10 rounded bg-muted flex items-center justify-center overflow-hidden">
-                          {m.thumbnail_url ? (
-                            <img src={m.thumbnail_url} alt="" className="w-full h-full object-cover" />
-                          ) : (
+                        {m.thumbnail_url?.startsWith('https://tldv.io') ? (
+                          <a href={m.thumbnail_url} target="_blank" rel="noopener noreferrer"
+                            className="w-10 h-10 rounded bg-accent/10 border border-accent/20 flex flex-col items-center justify-center hover:bg-accent/20 transition-colors"
+                            title="tl;dvで開く" onClick={(e) => e.stopPropagation()}>
+                            <Video className="h-3.5 w-3.5 text-accent" />
+                            <span className="text-[7px] text-accent">tl;dv</span>
+                          </a>
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-muted flex items-center justify-center">
                             <Video className="h-4 w-4 text-text-secondary" />
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Link href={`/meetings/${m.id}`} className="text-accent hover:underline font-medium">

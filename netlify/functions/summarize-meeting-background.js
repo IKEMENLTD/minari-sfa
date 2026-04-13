@@ -197,12 +197,31 @@ async function callClaudeApi(transcript, apiKey, signal) {
 // ---------------------------------------------------------------------------
 
 exports.handler = async function (event, context) {
+  // ログ用ヘルパー（job_logsテーブルに記録）
+  async function logJob(supabase, meetingId, status, message) {
+    try {
+      if (supabase) {
+        await supabase.from("job_logs").insert({
+          job_type: "summarize",
+          meeting_id: meetingId || null,
+          status,
+          message: (message || "").substring(0, 2000),
+        });
+      }
+    } catch (e) {
+      console.error("job_log 書き込み失敗:", e);
+    }
+  }
+
+  let supabase = null;
+  let meetingId = null;
+
   try {
     // 認証: 共有シークレットによるヘッダー検証
     const secret = event.headers["x-background-secret"];
     const expectedSecret = process.env.BACKGROUND_FUNCTION_SECRET;
     if (!expectedSecret || secret !== expectedSecret) {
-      console.error("Background Function: 認証失敗");
+      console.error("Background Function: 認証失敗", { hasSecret: !!secret, hasExpected: !!expectedSecret });
       return { statusCode: 401, body: "Unauthorized" };
     }
 
@@ -241,15 +260,17 @@ exports.handler = async function (event, context) {
     }
 
     const body = JSON.parse(event.body || "{}");
-    const meetingId = body.meeting_id;
+    meetingId = body.meeting_id;
 
     if (!meetingId || typeof meetingId !== "string") {
       return { statusCode: 400, body: "meeting_id が指定されていません" };
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey, {
+    supabase = createClient(supabaseUrl, supabaseKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+
+    await logJob(supabase, meetingId, "started", "要約生成を開始");
 
     // 既に要約が存在する場合はスキップ
     const { data: existingSummary } = await supabase
@@ -356,15 +377,15 @@ exports.handler = async function (event, context) {
       }
 
       console.log(`会議 ${meetingId} の要約を正常に生成・保存しました`);
+      await logJob(supabase, meetingId, "completed", `要約生成完了 (${result.summary.length}文字)`);
       return { statusCode: 200, body: "OK" };
     } finally {
       clearTimeout(timeoutId);
     }
   } catch (err) {
-    console.error(
-      "Background Function エラー:",
-      err instanceof Error ? err.message : err
-    );
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("Background Function エラー:", errMsg);
+    await logJob(supabase, meetingId, "error", errMsg);
     return { statusCode: 500, body: "Internal error" };
   }
 };
