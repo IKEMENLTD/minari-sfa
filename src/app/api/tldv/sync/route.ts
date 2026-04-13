@@ -94,6 +94,8 @@ export async function POST(
             source: 'tldv',
             source_id: tldvMeeting.id,
             participants: tldvMeeting.participants,
+            title: tldvMeeting.title || null,
+            thumbnail_url: tldvMeeting.thumbnail_url || null,
           })
           .select('*')
           .single();

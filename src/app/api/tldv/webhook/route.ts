@@ -166,6 +166,7 @@ export async function POST(
         source: 'tldv',
         source_id: payload.meeting_id,
         participants: payload.participants ?? [],
+        title: payload.title || null,
       })
       .select('*')
       .single();

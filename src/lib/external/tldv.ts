@@ -87,6 +87,11 @@ export async function fetchMeetings(
         date: isoDate,
         duration: typeof m.duration === 'number' ? m.duration : null,
         participants: participantNames,
+        thumbnail_url: typeof m.thumbnail_url === 'string' ? m.thumbnail_url
+          : typeof m.image === 'string' ? m.image
+          : typeof m.preview_image === 'string' ? m.preview_image
+          : typeof m.thumbnail === 'string' ? m.thumbnail
+          : null,
       };
     });
   } finally {

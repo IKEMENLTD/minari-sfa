@@ -29,11 +29,7 @@ export async function autoLinkContactToMeeting(
 
     if (parsed.length === 0) return null;
 
-    // 全コンタクトを取得（参加者数が少ないので、ilike複数回より効率的）
-    // NOTE: コンタクト数が数千件を超える場合はilike検索に切り替えるべき
-    const namePatterns = parsed.map((p) => `%${p.full_name}%`);
-
-    // 各参加者名でilike検索
+    // 各参加者名でilike検索（完全一致のみ紐付け）
     for (const participant of parsed) {
       const { data: contacts } = await supabase
         .from('contacts')

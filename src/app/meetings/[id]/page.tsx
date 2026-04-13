@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -11,6 +12,7 @@ import {
   Save,
   UserPlus,
   Zap,
+  Video,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -505,26 +507,47 @@ export default function MeetingDetailPage() {
         </Link>
         <ChevronRight className="h-3.5 w-3.5" />
         <span className="text-text">
-          {new Date(meeting.meeting_date).toLocaleDateString('ja-JP')}
+          {meeting.title || new Date(meeting.meeting_date).toLocaleDateString('ja-JP')}
         </span>
       </nav>
 
       {/* ヘッダー情報 */}
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-lg font-semibold text-text">
-          {new Date(meeting.meeting_date).toLocaleDateString('ja-JP', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })}
-        </h1>
-        {meeting.tool && <Badge variant="info">{TOOL_LABEL[meeting.tool] ?? meeting.tool}</Badge>}
-        {meeting.contact && (
-          <Link href={`/contacts/${meeting.contact.id}`} className="text-sm text-accent hover:underline">
-            {meeting.contact.full_name}
-          </Link>
-        )}
-        {!meeting.contact_id && <Badge variant="warning">未紐付け</Badge>}
+      <div className="flex items-start gap-4">
+        {/* サムネイル */}
+        <div className="shrink-0 w-16 h-16 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+          {meeting.thumbnail_url ? (
+            <img src={meeting.thumbnail_url} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <Video className="h-6 w-6 text-text-secondary" />
+          )}
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold text-text">
+            {meeting.title || new Date(meeting.meeting_date).toLocaleDateString('ja-JP', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </h1>
+          {meeting.title && (
+            <p className="text-sm text-text-secondary mt-0.5">
+              {new Date(meeting.meeting_date).toLocaleDateString('ja-JP', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+            {meeting.tool && <Badge variant="info">{TOOL_LABEL[meeting.tool] ?? meeting.tool}</Badge>}
+            {meeting.contact && (
+              <Link href={`/contacts/${meeting.contact.id}`} className="text-sm text-accent hover:underline">
+                {meeting.contact.full_name}
+              </Link>
+            )}
+            {!meeting.contact_id && <Badge variant="warning">未紐付け</Badge>}
+          </div>
+        </div>
       </div>
 
       {/* 参加者 */}

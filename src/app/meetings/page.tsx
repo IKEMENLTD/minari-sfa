@@ -1,9 +1,10 @@
+/* eslint-disable @next/next/no-img-element */
 'use client';
 
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { AlertCircle, Search, RefreshCw } from 'lucide-react';
+import { AlertCircle, Search, RefreshCw, Video } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -85,12 +86,13 @@ function MeetingsContent() {
       if (!res.ok) throw new Error('データの取得に失敗しました');
       const json: { data: MeetingListItem[]; total?: number } = await res.json();
 
-      // クライアントサイドでコンタクト名フィルタ（APIにsearchがなくても対応）
+      // クライアントサイドでコンタクト名・タイトルフィルタ（APIにsearchがなくても対応）
       let filtered = json.data;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(
           (m) => m.contact?.full_name?.toLowerCase().includes(q)
+            || m.title?.toLowerCase().includes(q)
         );
       }
 
@@ -204,7 +206,7 @@ function MeetingsContent() {
       <div className="flex gap-2">
         <div className="flex-1 max-w-xs">
           <Input
-            placeholder="コンタクト名で検索..."
+            placeholder="タイトル・コンタクト名で検索..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -279,21 +281,36 @@ function MeetingsContent() {
               <Link
                 key={m.id}
                 href={`/meetings/${m.id}`}
-                className="block border border-border bg-surface p-3 hover:bg-muted/50"
+                className="flex items-start gap-3 border border-border bg-surface p-3 hover:bg-muted/50"
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm text-accent">
-                    {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {m.tool && <Badge variant="info">{TOOL_LABEL[m.tool] ?? m.tool}</Badge>}
-                    {!m.contact_id && <Badge variant="warning">未紐付け</Badge>}
-                  </div>
+                {/* サムネイル */}
+                <div className="shrink-0 w-12 h-12 rounded bg-muted flex items-center justify-center overflow-hidden">
+                  {m.thumbnail_url ? (
+                    <img src={m.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <Video className="h-5 w-5 text-text-secondary" />
+                  )}
                 </div>
-                <p className="text-sm text-text">{m.contact?.full_name ?? '未紐付け'}</p>
-                {m.summary_text && (
-                  <p className="text-xs text-text-secondary mt-1 truncate">{truncate(m.summary_text, 60)}</p>
-                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-text truncate">
+                      {m.title || new Date(m.meeting_date).toLocaleDateString('ja-JP')}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      {m.tool && <Badge variant="info">{TOOL_LABEL[m.tool] ?? m.tool}</Badge>}
+                      {!m.contact_id && <Badge variant="warning">未紐付け</Badge>}
+                    </div>
+                  </div>
+                  {m.title && (
+                    <p className="text-xs text-text-secondary">
+                      {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
+                    </p>
+                  )}
+                  <p className="text-sm text-text">{m.contact?.full_name ?? '未紐付け'}</p>
+                  {m.summary_text && (
+                    <p className="text-xs text-text-secondary mt-1 truncate">{truncate(m.summary_text, 60)}</p>
+                  )}
+                </div>
               </Link>
             ))}
           </div>
@@ -304,7 +321,8 @@ function MeetingsContent() {
               <Table>
                 <TableHead>
                   <tr>
-                    <TableHeader>日時</TableHeader>
+                    <TableHeader className="w-10"></TableHeader>
+                    <TableHeader>タイトル / 日時</TableHeader>
                     <TableHeader>コンタクト</TableHeader>
                     <TableHeader>ツール</TableHeader>
                     <TableHeader>ソース</TableHeader>
@@ -315,9 +333,23 @@ function MeetingsContent() {
                   {meetings.map((m) => (
                     <TableRow key={m.id}>
                       <TableCell>
-                        <Link href={`/meetings/${m.id}`} className="text-accent hover:underline">
-                          {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
+                        <div className="w-10 h-10 rounded bg-muted flex items-center justify-center overflow-hidden">
+                          {m.thumbnail_url ? (
+                            <img src={m.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <Video className="h-4 w-4 text-text-secondary" />
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Link href={`/meetings/${m.id}`} className="text-accent hover:underline font-medium">
+                          {m.title || new Date(m.meeting_date).toLocaleDateString('ja-JP')}
                         </Link>
+                        {m.title && (
+                          <p className="text-xs text-text-secondary mt-0.5">
+                            {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell>
                         {m.contact ? (

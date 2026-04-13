@@ -78,6 +78,8 @@ export interface MeetingRow {
   id: string;
   contact_id: string | null;
   deal_id: string | null;
+  title: string | null;
+  thumbnail_url: string | null;
   meeting_date: string;
   source: 'tldv' | 'teams_copilot' | 'manual';
   source_id: string | null;
@@ -209,6 +211,8 @@ export interface UpdateDealRequest {
 export interface CreateMeetingRequest {
   contact_id?: string | null;
   deal_id?: string | null;
+  title?: string | null;
+  thumbnail_url?: string | null;
   meeting_date: string;
   source: 'tldv' | 'teams_copilot' | 'manual';
   source_id?: string | null;
@@ -290,6 +294,7 @@ export interface TldvMeeting {
   date: string;
   duration: number | null;
   participants: string[];
+  thumbnail_url: string | null;
 }
 
 /** TLDV API 文字起こしデータ */
