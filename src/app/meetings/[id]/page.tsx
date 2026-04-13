@@ -13,6 +13,8 @@ import {
   UserPlus,
   Zap,
   Video,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -127,6 +129,21 @@ export default function MeetingDetailPage() {
   // AI要約生成
   const [summarizing, setSummarizing] = useState(false);
   const [summarizeMsg, setSummarizeMsg] = useState<string | null>(null);
+
+  // コピー状態
+  const [copiedSummary, setCopiedSummary] = useState(false);
+  const [copiedTranscript, setCopiedTranscript] = useState(false);
+
+  const handleCopy = async (text: string, type: 'summary' | 'transcript') => {
+    await navigator.clipboard.writeText(text);
+    if (type === 'summary') {
+      setCopiedSummary(true);
+      setTimeout(() => setCopiedSummary(false), 2000);
+    } else {
+      setCopiedTranscript(true);
+      setTimeout(() => setCopiedTranscript(false), 2000);
+    }
+  };
 
   // AI次アクション採用
   const [adoptingAction, setAdoptingAction] = useState(false);
@@ -680,8 +697,20 @@ export default function MeetingDetailPage() {
                 </div>
               )}
               {meeting.summary ? (
-                <div className="text-sm text-text whitespace-pre-wrap leading-relaxed">
-                  {meeting.summary.summary_text}
+                <div>
+                  <div className="flex justify-end mb-2">
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(meeting.summary!.summary_text, 'summary')}
+                      className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent transition-colors"
+                    >
+                      {copiedSummary ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copiedSummary ? 'コピーしました' : 'コピー'}
+                    </button>
+                  </div>
+                  <div className="text-sm text-text whitespace-pre-wrap leading-relaxed">
+                    {meeting.summary.summary_text}
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm text-text-secondary py-4 text-center">
@@ -750,8 +779,20 @@ export default function MeetingDetailPage() {
             {transcriptOpen && (
               <CardContent>
                 {meeting.transcript ? (
-                  <div className="text-sm text-text whitespace-pre-wrap leading-relaxed max-h-[600px] overflow-y-auto">
-                    {formatTranscriptText(meeting.transcript.full_text)}
+                  <div>
+                    <div className="flex justify-end mb-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(formatTranscriptText(meeting.transcript!.full_text), 'transcript')}
+                        className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent transition-colors"
+                      >
+                        {copiedTranscript ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        {copiedTranscript ? 'コピーしました' : 'コピー'}
+                      </button>
+                    </div>
+                    <div className="text-sm text-text whitespace-pre-wrap leading-relaxed max-h-[600px] overflow-y-auto">
+                      {formatTranscriptText(meeting.transcript.full_text)}
+                    </div>
                   </div>
                 ) : (
                   <p className="text-sm text-text-secondary py-4 text-center">議事録なし</p>
