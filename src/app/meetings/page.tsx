@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { AlertCircle, Search } from 'lucide-react';
+import { AlertCircle, Search, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -53,6 +53,8 @@ function MeetingsContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [unlinked, setUnlinked] = useState<UnlinkedFilter>(
     (searchParams.get('unlinked') as UnlinkedFilter) ?? '',
   );
@@ -135,19 +137,60 @@ function MeetingsContent() {
     updateUrl(unlinked, searchQuery, newPage);
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const res = await fetch('/api/tldv/sync', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) {
+        setSyncMessage(`同期エラー: ${json.error ?? '不明なエラー'}`);
+        return;
+      }
+      const result = json.data;
+      if (result.synced === 0) {
+        setSyncMessage('新しい会議はありませんでした');
+      } else {
+        setSyncMessage(`${result.synced}件の会議を同期しました${result.errors.length > 0 ? `（${result.errors.length}件エラー）` : ''}`);
+        fetchMeetings();
+      }
+    } catch {
+      setSyncMessage('tldv同期中にエラーが発生しました');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-text">会議記録</h1>
-        <Link
-          href="/meetings/new"
-          className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-all"
-        >
-          会議を登録
-        </Link>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSync}
+            disabled={syncing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? '同期中...' : 'tldvから同期'}
+          </Button>
+          <Link
+            href="/meetings/new"
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-all"
+          >
+            会議を登録
+          </Link>
+        </div>
       </div>
+
+      {syncMessage && (
+        <div className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
+          {syncMessage}
+        </div>
+      )}
 
       {/* コンタクト名検索 */}
       <div className="flex gap-2">
