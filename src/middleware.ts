@@ -68,7 +68,7 @@ async function verifySessionToken(cookieValue: string): Promise<boolean> {
 }
 
 // 認証不要なパス
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/health', '/api/tldv/webhook'];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/health', '/api/tldv/webhook', '/.netlify/functions/'];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
