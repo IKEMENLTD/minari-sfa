@@ -771,20 +771,42 @@ export default function MeetingDetailPage() {
               <h2 className="text-sm font-semibold text-text">紐付け</h2>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Select
-                label="コンタクト"
-                options={contacts}
-                value={contactId}
-                onChange={(e) => setContactId(e.target.value)}
-                placeholder="コンタクトを選択..."
-              />
-              <Select
-                label="案件"
-                options={deals}
-                value={dealId}
-                onChange={(e) => setDealId(e.target.value)}
-                placeholder="案件を選択..."
-              />
+              <div>
+                <Select
+                  label="コンタクト"
+                  options={contacts}
+                  value={contactId}
+                  onChange={(e) => setContactId(e.target.value)}
+                  placeholder="コンタクトを選択..."
+                />
+                {contactId && (
+                  <button
+                    type="button"
+                    onClick={() => setContactId('')}
+                    className="text-xs text-red-400 hover:text-red-500 mt-1"
+                  >
+                    紐付けを解除
+                  </button>
+                )}
+              </div>
+              <div>
+                <Select
+                  label="案件"
+                  options={deals}
+                  value={dealId}
+                  onChange={(e) => setDealId(e.target.value)}
+                  placeholder="案件を選択..."
+                />
+                {dealId && (
+                  <button
+                    type="button"
+                    onClick={() => setDealId('')}
+                    className="text-xs text-red-400 hover:text-red-500 mt-1"
+                  >
+                    紐付けを解除
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-3">
                 <Button size="sm" onClick={handleSave} loading={saving} disabled={saving}>
                   <Save className="h-4 w-4" />

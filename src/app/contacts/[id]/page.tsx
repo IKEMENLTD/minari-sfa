@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronRight, AlertCircle, Save } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ChevronRight, AlertCircle, Save, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,7 @@ const MEETINGS_PAGE_SIZE = 20;
 
 export default function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
 
   const [contact, setContact] = useState<ContactRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +53,7 @@ export default function ContactDetailPage() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   // editable fields
@@ -342,6 +345,34 @@ export default function ContactDetailPage() {
                 <Button onClick={handleSave} loading={saving} disabled={saving}>
                   <Save className="h-4 w-4" />
                   保存
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    if (!confirm('このコンタクトを削除してもよろしいですか？関連する案件や会議がある場合は削除できません。')) return;
+                    setDeleting(true);
+                    try {
+                      const res = await fetch(`/api/contacts/${id}`, { method: 'DELETE' });
+                      if (res.status === 204) {
+                        router.push('/contacts');
+                      } else {
+                        const json = await res.json();
+                        setSaveMsg(json.error ?? '削除に失敗しました');
+                        setTimeout(() => setSaveMsg(null), 5000);
+                      }
+                    } catch {
+                      setSaveMsg('削除に失敗しました');
+                      setTimeout(() => setSaveMsg(null), 5000);
+                    } finally {
+                      setDeleting(false);
+                    }
+                  }}
+                  loading={deleting}
+                  disabled={deleting || saving}
+                  className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  削除
                 </Button>
                 {saveMsg && (
                   <span className={`text-sm ${saveMsg === '保存しました' ? 'text-green-500' : 'text-red-400'}`}>
