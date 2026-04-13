@@ -139,10 +139,10 @@ export async function POST(
 
     const insertData: Record<string, unknown> = {
       full_name: parsed.data.full_name,
-      assigned_to: parsed.data.assigned_to ?? auth.userId,
       source: parsed.data.source ?? 'manual',
       tier: parsed.data.tier ?? 3,
     };
+    if (parsed.data.assigned_to) insertData.assigned_to = parsed.data.assigned_to;
     if (parsed.data.company_name !== undefined) insertData.company_name = parsed.data.company_name;
     if (parsed.data.department !== undefined) insertData.department = parsed.data.department;
     if (parsed.data.position !== undefined) insertData.position = parsed.data.position;

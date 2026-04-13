@@ -196,8 +196,8 @@ export async function POST(
       contact_id: parsed.data.contact_id,
       title: parsed.data.title,
       phase: parsed.data.phase,
-      assigned_to: parsed.data.assigned_to ?? auth.userId,
     };
+    if (parsed.data.assigned_to) insertData.assigned_to = parsed.data.assigned_to;
     if (parsed.data.probability !== undefined) insertData.probability = parsed.data.probability;
     if (parsed.data.next_action !== undefined) insertData.next_action = parsed.data.next_action;
     if (parsed.data.next_action_date !== undefined) insertData.next_action_date = parsed.data.next_action_date;

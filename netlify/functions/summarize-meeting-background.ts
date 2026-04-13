@@ -11,7 +11,22 @@ import {
   MEETING_SUMMARY_PROMPT,
   meetingSummarySchema,
 } from "../../src/lib/prompts/meeting-summary";
-import type { HandlerEvent, HandlerContext, HandlerResponse } from "@netlify/functions";
+
+// V1 handler types (inline to avoid @netlify/functions import issues)
+interface HandlerEvent {
+  httpMethod: string;
+  headers: Record<string, string | undefined>;
+  body: string | null;
+}
+
+interface HandlerContext {
+  callbackWaitsForEmptyEventLoop?: boolean;
+}
+
+interface HandlerResponse {
+  statusCode: number;
+  body: string;
+}
 
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
 const API_TIMEOUT_MS = 120_000;

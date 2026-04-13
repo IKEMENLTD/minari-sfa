@@ -125,7 +125,6 @@ export async function POST(
         // 新規コンタクトを作成
         const insertData: Record<string, unknown> = {
           full_name: parsedName.full_name,
-          assigned_to: auth.userId,
           source: 'tldv' as const,
           tier: 4, // 新規作成はTier 4（不明）から開始
         };
