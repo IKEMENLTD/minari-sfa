@@ -1,14 +1,17 @@
-import type { Config } from "@netlify/functions";
+// ---------------------------------------------------------------------------
+// Netlify Background Function (V1形式)
+// ファイル名の "-background" サフィックスにより自動的にBackground Functionとして動作
+// → 即座に202を返し、最大15分バックグラウンドで実行
+// 重要: V2 Config exportを使うとV1のbackground判定が無効化されるため使用しない
+// ---------------------------------------------------------------------------
+
 import { createClient } from "@supabase/supabase-js";
 import {
   CLAUDE_SONNET,
   MEETING_SUMMARY_PROMPT,
   meetingSummarySchema,
 } from "../../src/lib/prompts/meeting-summary";
-
-// ---------------------------------------------------------------------------
-// Claude API 定義
-// ---------------------------------------------------------------------------
+import type { HandlerEvent, HandlerContext, HandlerResponse } from "@netlify/functions";
 
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
 const API_TIMEOUT_MS = 120_000;
@@ -21,10 +24,6 @@ interface ClaudeContentBlock {
 interface ClaudeApiResponse {
   content: ClaudeContentBlock[];
 }
-
-// ---------------------------------------------------------------------------
-// Claude API 呼び出し
-// ---------------------------------------------------------------------------
 
 interface ClaudeSummaryResult {
   summary: string;
@@ -83,23 +82,21 @@ async function callClaudeApi(
 }
 
 // ---------------------------------------------------------------------------
-// Background Function ハンドラ
-// Netlify Background Functions は最大15分実行可能
+// V1 Handler (exports.handler 形式)
+// "-background" サフィックスによりNetlifyが自動で202を返し、バックグラウンド実行
 // ---------------------------------------------------------------------------
 
-interface SummarizeRequestBody {
-  meeting_id: string;
-}
-
-export default async function handler(request: Request): Promise<Response> {
+export const handler = async (
+  event: HandlerEvent,
+  _context: HandlerContext
+): Promise<HandlerResponse> => {
   try {
-    // ---------------------------------------------------------------------------
     // 認証: 共有シークレットによるヘッダー検証
-    // ---------------------------------------------------------------------------
-    const secret = request.headers.get("x-background-secret");
+    const secret = event.headers["x-background-secret"];
     const expectedSecret = process.env.BACKGROUND_FUNCTION_SECRET;
     if (!expectedSecret || secret !== expectedSecret) {
-      return new Response("Unauthorized", { status: 401 });
+      console.error("Background Function: 認証失敗");
+      return { statusCode: 401, body: "Unauthorized" };
     }
 
     // 環境変数チェック
@@ -109,10 +106,10 @@ export default async function handler(request: Request): Promise<Response> {
 
     if (!supabaseUrl || !supabaseKey) {
       console.error("Supabase 環境変数が設定されていません");
-      return new Response("Supabase環境変数が未設定です", { status: 500 });
+      return { statusCode: 500, body: "Supabase環境変数が未設定です" };
     }
 
-    // 環境変数に CLAUDE_API_KEY がない場合、app_settings から取得を試みる
+    // 環境変数に CLAUDE_API_KEY がない場合、app_settings から取得
     if (!claudeApiKey) {
       try {
         const tmpSupabase = createClient(supabaseUrl, supabaseKey, {
@@ -133,14 +130,14 @@ export default async function handler(request: Request): Promise<Response> {
 
     if (!claudeApiKey) {
       console.error("CLAUDE_API_KEY が設定されていません");
-      return new Response("CLAUDE_API_KEY が未設定です", { status: 500 });
+      return { statusCode: 500, body: "CLAUDE_API_KEY が未設定です" };
     }
 
-    const body = (await request.json()) as SummarizeRequestBody;
+    const body = JSON.parse(event.body ?? "{}");
     const meetingId = body.meeting_id;
 
     if (!meetingId || typeof meetingId !== "string") {
-      return new Response("meeting_id が指定されていません", { status: 400 });
+      return { statusCode: 400, body: "meeting_id が指定されていません" };
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -156,7 +153,7 @@ export default async function handler(request: Request): Promise<Response> {
 
     if (existingSummary && existingSummary.length > 0) {
       console.log(`会議 ${meetingId} は既に要約済みです。スキップします。`);
-      return new Response("Already summarized", { status: 200 });
+      return { statusCode: 200, body: "Already summarized" };
     }
 
     // transcript を取得
@@ -168,16 +165,13 @@ export default async function handler(request: Request): Promise<Response> {
       .single();
 
     if (transcriptError || !transcriptData) {
-      console.error(
-        `会議 ${meetingId} の文字起こしが見つかりません:`,
-        transcriptError?.message
-      );
-      return new Response("Transcript not found", { status: 404 });
+      console.error(`会議 ${meetingId} の文字起こしが見つかりません:`, transcriptError?.message);
+      return { statusCode: 404, body: "Transcript not found" };
     }
 
     const fullText = transcriptData.full_text as string;
     if (!fullText) {
-      return new Response("Transcript is empty", { status: 404 });
+      return { statusCode: 404, body: "Transcript is empty" };
     }
 
     // Claude API で要約生成
@@ -197,14 +191,11 @@ export default async function handler(request: Request): Promise<Response> {
       });
 
       if (insertError) {
-        console.error(
-          `会議 ${meetingId} の要約保存に失敗しました:`,
-          insertError.message
-        );
-        return new Response("Summary save failed", { status: 500 });
+        console.error(`会議 ${meetingId} の要約保存に失敗しました:`, insertError.message);
+        return { statusCode: 500, body: "Summary save failed" };
       }
 
-      // participants が取得できた場合、meetings テーブルを更新（既にNULLまたは空の場合のみ）
+      // participants 更新（空の場合のみ）
       if (result.participants.length > 0) {
         const { data: meetingData } = await supabase
           .from("meetings")
@@ -214,21 +205,14 @@ export default async function handler(request: Request): Promise<Response> {
 
         const currentParticipants = meetingData?.participants as string[] | null;
         if (!currentParticipants || currentParticipants.length === 0) {
-          const { error: updateError } = await supabase
+          await supabase
             .from("meetings")
             .update({ participants: result.participants })
             .eq("id", meetingId);
-
-          if (updateError) {
-            console.warn(
-              `会議 ${meetingId} の参加者更新に失敗しました:`,
-              updateError.message
-            );
-          }
         }
       }
 
-      // deal_id が紐付いている場合、次アクションを自動提案（既存値がnullの場合のみ）
+      // deal_id 紐付きの場合、次アクション自動設定
       if (result.suggestedNextAction) {
         const { data: meetingForDeal } = await supabase
           .from("meetings")
@@ -250,41 +234,21 @@ export default async function handler(request: Request): Promise<Response> {
             if (result.suggestedNextActionDate) {
               updatePayload.next_action_date = result.suggestedNextActionDate;
             }
-
-            const { error: dealUpdateError } = await supabase
+            await supabase
               .from("deals")
               .update(updatePayload)
               .eq("id", meetingForDeal.deal_id);
-
-            if (dealUpdateError) {
-              console.warn(
-                `案件 ${meetingForDeal.deal_id} の次アクション更新に失敗しました:`,
-                dealUpdateError.message
-              );
-            } else {
-              console.log(
-                `案件 ${meetingForDeal.deal_id} の次アクションを自動設定しました: ${result.suggestedNextAction}`
-              );
-            }
           }
         }
       }
 
       console.log(`会議 ${meetingId} の要約を正常に生成・保存しました`);
-      return new Response("OK", { status: 200 });
+      return { statusCode: 200, body: "OK" };
     } finally {
       clearTimeout(timeoutId);
     }
   } catch (err) {
-    console.error(
-      "Background Function エラー:",
-      err instanceof Error ? err.message : err
-    );
-    return new Response("Internal error", { status: 500 });
+    console.error("Background Function エラー:", err instanceof Error ? err.message : err);
+    return { statusCode: 500, body: "Internal error" };
   }
-}
-
-export const config: Config = {
-  path: "/.netlify/functions/summarize-meeting-background",
-  method: "POST",
 };

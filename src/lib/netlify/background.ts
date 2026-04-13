@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Netlify Background Function 呼び出しヘルパー
-// 注: summarize APIは直接Claude APIを呼ぶ方式に変更済み。
-// このヘルパーはtldv webhook等からの非同期呼び出し用に残す。
+// V1形式のBackground Function（-backgroundサフィックス）を呼び出す
+// Netlifyが自動的に202を返し、バックグラウンドで最大15分実行
 // ---------------------------------------------------------------------------
 
 /**
@@ -19,33 +19,41 @@ function getSiteUrl(): string {
 }
 
 /**
- * 会議要約API を呼び出す（Webhook等からの自動トリガー用）。
- * Background Functionではなく、直接summarize APIを呼び出す。
+ * Netlify Background Function で会議要約を非同期実行する。
+ * V1形式のBackground Functionは即座に202を返し、最大15分バックグラウンドで実行可能。
  */
 export async function invokeSummarizeBackground(meetingId: string): Promise<void> {
   const siteUrl = getSiteUrl();
-  const url = `${siteUrl}/api/meetings/${meetingId}/summarize`;
+  const url = `${siteUrl}/.netlify/functions/summarize-meeting-background`;
+  const secret = process.env.BACKGROUND_FUNCTION_SECRET;
+
+  if (!secret) {
+    console.warn('[security] BACKGROUND_FUNCTION_SECRET が未設定です。本番環境では必ず設定してください。');
+  }
 
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Cookie': `sd_auth=${process.env.INTERNAL_AUTH_TOKEN ?? ''}`,
+        'x-background-secret': secret ?? '',
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ meeting_id: meetingId }),
     });
 
-    if (!res.ok) {
+    // Background Functionは202を返すはず。それ以外はエラー
+    if (!res.ok && res.status !== 202) {
       const body = await res.text().catch(() => '');
-      console.error(`要約API呼び出し失敗 (meeting_id: ${meetingId}, status: ${res.status}):`, body);
-    } else {
-      console.log(`要約API呼び出し成功 (meeting_id: ${meetingId})`);
+      console.error(`Background Function エラー (status: ${res.status}):`, body);
+      throw new Error(`Background Function 呼び出し失敗 (status: ${res.status}): ${body}`);
     }
+
+    console.log(`Background Function 呼び出し成功 (meeting_id: ${meetingId}, status: ${res.status})`);
   } catch (err: unknown) {
     console.error(
-      `要約API呼び出しエラー (meeting_id: ${meetingId}):`,
+      `Background Function 呼び出し失敗 (meeting_id: ${meetingId}):`,
       err instanceof Error ? err.message : err
     );
+    throw err; // 呼び出し元にエラーを伝播
   }
 }

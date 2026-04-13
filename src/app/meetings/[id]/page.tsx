@@ -442,7 +442,7 @@ export default function MeetingDetailPage() {
 
   const handleSummarize = async (force: boolean) => {
     setSummarizing(true);
-    setSummarizeMsg('AI要約を生成中です...（30秒〜2分程度かかります）');
+    setSummarizeMsg('AI要約の生成をリクエスト中...');
     try {
       const url = `/api/meetings/${id}/summarize${force ? '?force=true' : ''}`;
       const res = await fetch(url, {
@@ -452,18 +452,44 @@ export default function MeetingDetailPage() {
       const json = await res.json();
       if (!res.ok || json.error) {
         setSummarizeMsg(json.error ?? 'AI要約の生成に失敗しました');
+        setSummarizing(false);
         setTimeout(() => setSummarizeMsg(null), 10000);
-      } else {
-        setSummarizeMsg('AI要約を生成しました');
-        // 即座にデータ再取得
-        await fetchMeeting();
-        setTimeout(() => setSummarizeMsg(null), 5000);
+        return;
       }
+
+      // Background Functionで非同期生成中 — ポーリングで完了を待つ
+      setSummarizeMsg('AI要約を生成中です...（30秒〜2分程度かかります）');
+      let attempts = 0;
+      const maxAttempts = 24; // 最大2分 (5秒 × 24)
+      const poll = async () => {
+        attempts++;
+        try {
+          const meetingRes = await fetch(`/api/meetings/${id}?include_transcript=true`);
+          if (meetingRes.ok) {
+            const meetingJson = await meetingRes.json();
+            if (meetingJson.data?.summary) {
+              setMeeting(meetingJson.data);
+              setSummarizeMsg('AI要約を生成しました');
+              setSummarizing(false);
+              setTimeout(() => setSummarizeMsg(null), 5000);
+              return;
+            }
+          }
+        } catch { /* ignore polling errors */ }
+        if (attempts < maxAttempts) {
+          setSummarizeMsg(`AI要約を生成中です...（${attempts * 5}秒経過）`);
+          setTimeout(poll, 5000);
+        } else {
+          setSummarizeMsg('生成に時間がかかっています。ページを再読み込みして確認してください。');
+          setSummarizing(false);
+          setTimeout(() => setSummarizeMsg(null), 15000);
+        }
+      };
+      setTimeout(poll, 5000);
     } catch {
       setSummarizeMsg('AI要約の生成に失敗しました。ネットワーク接続を確認してください。');
-      setTimeout(() => setSummarizeMsg(null), 10000);
-    } finally {
       setSummarizing(false);
+      setTimeout(() => setSummarizeMsg(null), 10000);
     }
   };
 
@@ -546,6 +572,65 @@ export default function MeetingDetailPage() {
                 </div>
               ))
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 未マッチ参加者 - 新規コンタクト登録候補 */}
+      {unmatched.length > 0 && (
+        <Card className="border-yellow-500/30 bg-yellow-500/5">
+          <CardHeader>
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2">
+                <UserPlus className="h-4 w-4 text-yellow-500" />
+                <h2 className="text-sm font-semibold text-yellow-500">
+                  未登録の参加者（{unmatched.length}名）
+                </h2>
+              </div>
+              {unmatched.length > 1 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={creatingContact === '__all__'}
+                  disabled={creatingContact !== null}
+                  onClick={handleCreateAllContacts}
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  全員をコンタクト登録
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {createContactMsg && (
+              <div className={`text-xs px-3 py-2 rounded ${createContactMsg.includes('失敗') ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+                {createContactMsg}
+              </div>
+            )}
+            {unmatched.map((participant) => (
+              <div key={participant.participant_name} className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-text truncate">
+                    {participant.parsed_name}
+                  </p>
+                  {participant.parsed_company && (
+                    <p className="text-xs text-text-secondary truncate">
+                      {participant.parsed_company}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={creatingContact === participant.participant_name}
+                  disabled={creatingContact !== null}
+                  onClick={() => handleCreateContact(participant)}
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  コンタクト登録
+                </Button>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}
