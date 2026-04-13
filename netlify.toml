@@ -10,4 +10,10 @@
 
 [functions]
   node_bundler = "esbuild"
-  included_files = ["src/lib/prompts/**"]
+
+# Next.jsプラグインが /.netlify/functions/* パスを横取りしないよう除外設定
+[[redirects]]
+  from = "/.netlify/functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
