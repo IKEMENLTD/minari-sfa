@@ -28,10 +28,19 @@ interface SearchMeetingItem {
   contact_name: string | null;
 }
 
+interface SearchInquiryItem {
+  id: string;
+  contact_name: string;
+  content: string;
+  source: string;
+  status: string;
+}
+
 interface SearchResult {
   contacts: SearchContactItem[];
   deals: SearchDealItem[];
   meetings: SearchMeetingItem[];
+  inquiries: SearchInquiryItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +70,7 @@ export async function GET(
     // 空文字の場合は空結果を返す
     if (q.length === 0) {
       return NextResponse.json({
-        data: { contacts: [], deals: [], meetings: [] },
+        data: { contacts: [], deals: [], meetings: [], inquiries: [] },
         error: null,
       });
     }
@@ -95,20 +104,35 @@ export async function GET(
       dealQuery = dealQuery.eq('assigned_to', auth.userId);
     }
 
-    // --- 会議検索（participantsのany検索） ---
+    // --- 会議検索（contact名で検索） ---
     // NOTE: meetingsにはassigned_toがないため、memberロールも全件閲覧可能（既存API踏襲）
+    // participants配列の部分一致検索はPostgreSQLのcontainsでは困難なため、
+    // contact名での検索に切り替え、participants::textでのテキスト検索も併用
     const meetingQuery = supabase
       .from('meetings')
       .select('id, meeting_date, source, contact_id')
-      .contains('participants', [sanitized])
+      .or(`participants::text.ilike.%${sanitized}%,source.ilike.%${sanitized}%`)
       .order('meeting_date', { ascending: false })
       .limit(SEARCH_LIMIT);
 
+    // --- 問い合わせ検索 ---
+    let inquiryQuery = supabase
+      .from('inquiries')
+      .select('id, contact_name, content, source, status')
+      .or(`content.ilike.%${sanitized}%,contact_name.ilike.%${sanitized}%`)
+      .order('created_at', { ascending: false })
+      .limit(SEARCH_LIMIT);
+
+    if (auth.role === 'member') {
+      inquiryQuery = inquiryQuery.eq('assigned_to', auth.userId);
+    }
+
     // 並行実行
-    const [contactResult, dealResult, meetingResult] = await Promise.all([
+    const [contactResult, dealResult, meetingResult, inquiryResult] = await Promise.all([
       contactQuery,
       dealQuery,
       meetingQuery,
+      inquiryQuery,
     ]);
 
     if (contactResult.error) {
@@ -119,6 +143,9 @@ export async function GET(
     }
     if (meetingResult.error) {
       console.error('会議検索に失敗しました:', meetingResult.error.message);
+    }
+    if (inquiryResult.error) {
+      console.error('問い合わせ検索に失敗しました:', inquiryResult.error.message);
     }
 
     // コンタクト結果のマッピング
@@ -163,8 +190,17 @@ export async function GET(
       contact_name: (row.contact_id && contactNameMap[row.contact_id as string]) ?? null,
     }));
 
+    // 問い合わせ結果のマッピング
+    const inquiries: SearchInquiryItem[] = (inquiryResult.data ?? []).map((row) => ({
+      id: row.id as string,
+      contact_name: row.contact_name as string,
+      content: row.content as string,
+      source: row.source as string,
+      status: row.status as string,
+    }));
+
     return NextResponse.json({
-      data: { contacts, deals, meetings },
+      data: { contacts, deals, meetings, inquiries },
       error: null,
     });
   } catch (err) {

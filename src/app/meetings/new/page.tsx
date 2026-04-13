@@ -116,7 +116,7 @@ export default function NewMeetingPage() {
       if (!res.ok || json.error) {
         setError(json.error ?? '登録に失敗しました');
       } else {
-        router.push('/meetings');
+        router.push(json.data?.id ? `/meetings/${json.data.id}` : '/meetings');
       }
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {

@@ -29,14 +29,17 @@ function getSiteUrl(): string {
 export async function invokeSummarizeBackground(meetingId: string): Promise<void> {
   const siteUrl = getSiteUrl();
   const url = `${siteUrl}/.netlify/functions/summarize-meeting-background`;
-  const secret = process.env.BACKGROUND_FUNCTION_SECRET ?? '';
+  const secret = process.env.BACKGROUND_FUNCTION_SECRET;
+  if (!secret) {
+    console.warn('[security] BACKGROUND_FUNCTION_SECRET が未設定です。本番環境では必ず設定してください。');
+  }
 
   try {
     await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-background-secret': secret,
+        'x-background-secret': secret ?? '',
       },
       body: JSON.stringify({ meeting_id: meetingId }),
     });

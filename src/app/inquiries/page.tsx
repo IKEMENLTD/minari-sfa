@@ -390,35 +390,43 @@ function InquiriesContent() {
 
       {/* ステータスタブ */}
       <div className="flex flex-wrap gap-2">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            onClick={() => handleStatusChange(tab.value)}
-            className={`px-3 py-1.5 text-sm font-medium rounded-md border transition-colors ${
-              status === tab.value
-                ? 'bg-accent/20 text-accent border-accent/30'
-                : 'bg-surface text-text-secondary border-border hover:bg-muted'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        <div className="flex flex-wrap gap-2" role="tablist">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={status === tab.value}
+              onClick={() => handleStatusChange(tab.value)}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md border transition-colors ${
+                status === tab.value
+                  ? 'bg-accent/20 text-accent border-accent/30'
+                  : 'bg-surface text-text-secondary border-border hover:bg-muted'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
         <div className="border-l border-border mx-1" />
-        {SOURCE_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            onClick={() => handleSourceChange(tab.value)}
-            className={`px-3 py-1.5 text-sm font-medium rounded-md border transition-colors ${
-              source === tab.value
-                ? 'bg-accent/20 text-accent border-accent/30'
-                : 'bg-surface text-text-secondary border-border hover:bg-muted'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        <div className="flex flex-wrap gap-2" role="tablist">
+          {SOURCE_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={source === tab.value}
+              onClick={() => handleSourceChange(tab.value)}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md border transition-colors ${
+                source === tab.value
+                  ? 'bg-accent/20 text-accent border-accent/30'
+                  : 'bg-surface text-text-secondary border-border hover:bg-muted'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && (

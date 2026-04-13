@@ -234,7 +234,7 @@ function SearchModal() {
           {/* コンタクト */}
           {results && results.contacts.length > 0 && (
             <div className="mb-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary uppercase tracking-wide">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary tracking-normal">
                 <Users className="h-3 w-3" />
                 <span>コンタクト</span>
               </div>
@@ -262,7 +262,7 @@ function SearchModal() {
           {/* 案件 */}
           {results && results.deals.length > 0 && (
             <div className="mb-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary uppercase tracking-wide">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary tracking-normal">
                 <Briefcase className="h-3 w-3" />
                 <span>案件</span>
               </div>
@@ -290,7 +290,7 @@ function SearchModal() {
           {/* 会議 */}
           {results && results.meetings.length > 0 && (
             <div className="mb-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary uppercase tracking-wide">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary tracking-normal">
                 <Calendar className="h-3 w-3" />
                 <span>会議</span>
               </div>

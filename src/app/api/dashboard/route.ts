@@ -126,28 +126,36 @@ export async function GET(
       };
     });
 
-    // --- 2. フェーズ別件数集計 ---
+    // --- 2. フェーズ別件数集計（単一クエリで取得） ---
     const phases: DealPhase[] = ['proposal_planned', 'proposal_active', 'waiting', 'follow_up', 'active'];
-    const phaseSummary: PhaseSummary[] = [];
 
-    for (const phase of phases) {
-      let phaseQuery = supabase
-        .from('deals')
-        .select('*', { count: 'exact', head: true })
-        .eq('phase', phase);
+    let phaseGroupQuery = supabase
+      .from('deals')
+      .select('phase, revenue')
+      .in('phase', phases);
 
-      if (auth.role === 'member') {
-        phaseQuery = phaseQuery.eq('assigned_to', auth.userId);
-      }
-
-      const { count, error: countError } = await phaseQuery;
-
-      if (countError) {
-        console.error(`フェーズ ${phase} のカウントに失敗しました:`, countError.message);
-      }
-
-      phaseSummary.push({ phase, count: count ?? 0 });
+    if (auth.role === 'member') {
+      phaseGroupQuery = phaseGroupQuery.eq('assigned_to', auth.userId);
     }
+
+    const { data: phaseRows, error: phaseError } = await phaseGroupQuery;
+
+    if (phaseError) {
+      console.error('フェーズ集計の取得に失敗しました:', phaseError.message);
+    }
+
+    const phaseCountMap: Record<string, number> = {};
+    const phaseRevenueMap: Record<string, number> = {};
+    for (const row of phaseRows ?? []) {
+      phaseCountMap[row.phase] = (phaseCountMap[row.phase] ?? 0) + 1;
+      phaseRevenueMap[row.phase] = (phaseRevenueMap[row.phase] ?? 0) + (row.revenue ?? 0);
+    }
+
+    const phaseSummary: PhaseSummary[] = phases.map((phase) => ({
+      phase,
+      count: phaseCountMap[phase] ?? 0,
+      revenue: phaseRevenueMap[phase] ?? 0,
+    }));
 
     // --- 3. 直近5件の会議 ---
     const { data: meetingsData, error: meetingsError } = await supabase

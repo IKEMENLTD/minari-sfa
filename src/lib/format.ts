@@ -6,8 +6,9 @@ export function formatDateShort(dateStr: string): string {
 }
 
 export function daysAgo(dateStr: string): string {
+  const normalized = dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00';
   const diff = Math.floor(
-    (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)
+    (Date.now() - new Date(normalized).getTime()) / (1000 * 60 * 60 * 24)
   );
   if (diff === 0) return '今日';
   if (diff === 1) return '昨日';

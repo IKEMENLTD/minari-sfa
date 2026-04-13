@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
+import { validateAuth, validateContentType, isAuthError, requireRole } from '@/lib/auth';
+import { stripHtml } from '@/lib/sanitize';
 import type { MeetingDetail, ApiResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -13,9 +14,10 @@ const uuidSchema = z.string().uuid();
 const updateMeetingSchema = z.object({
   contact_id: z.string().uuid().nullable().optional(),
   deal_id: z.string().uuid().nullable().optional(),
-  meeting_date: z.string().optional(),
-  participants: z.array(z.string().max(200)).max(50).optional(),
+  meeting_date: z.string().transform(stripHtml).optional(),
+  participants: z.array(z.string().max(200).transform(stripHtml)).max(50).optional(),
   tool: z.enum(['teams', 'zoom', 'meet', 'in_person', 'phone']).nullable().optional(),
+  expected_updated_at: z.string().optional(),
 }).strict();
 
 // ---------------------------------------------------------------------------
@@ -142,6 +144,17 @@ export async function PATCH(
 
     const supabase = createServerSupabaseClient();
 
+    // 楽観的ロック: expected_updated_at が指定されている場合、現在のレコードと比較
+    if (parsed.data.expected_updated_at) {
+      const { data: current } = await supabase.from('meetings').select('updated_at').eq('id', id).single();
+      if (current && current.updated_at !== parsed.data.expected_updated_at) {
+        return NextResponse.json(
+          { data: null, error: '他のユーザーによって更新されています。画面を再読み込みしてください。' },
+          { status: 409 }
+        );
+      }
+    }
+
     const { contact_id, deal_id, meeting_date, participants, tool } = parsed.data;
     const updateData: Record<string, unknown> = {};
     if (contact_id !== undefined) updateData.contact_id = contact_id;
@@ -213,5 +226,48 @@ export async function PATCH(
       { data: null, error: '会議の更新中にエラーが発生しました' },
       { status: 500 }
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/meetings/[id] - 会議削除
+// ---------------------------------------------------------------------------
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<NextResponse<ApiResult<null>>> {
+  const auth = await validateAuth(request);
+  if (isAuthError(auth)) return auth as NextResponse<ApiResult<null>>;
+  const roleError = requireRole(auth, ['admin']);
+  if (roleError) return roleError as NextResponse<ApiResult<null>>;
+
+  try {
+    const { id } = await params;
+    if (!uuidSchema.safeParse(id).success) {
+      return NextResponse.json({ data: null, error: '無効なIDフォーマットです' }, { status: 400 });
+    }
+
+    const supabase = createServerSupabaseClient();
+
+    const { data: existing } = await supabase.from('meetings').select('id').eq('id', id).single();
+    if (!existing) {
+      return NextResponse.json({ data: null, error: '指定された会議が見つかりません' }, { status: 404 });
+    }
+
+    // カスケード削除: summaries, transcripts
+    await supabase.from('summaries').delete().eq('meeting_id', id);
+    await supabase.from('transcripts').delete().eq('meeting_id', id);
+
+    const { error } = await supabase.from('meetings').delete().eq('id', id);
+    if (error) {
+      console.error('会議の削除に失敗しました:', error.message);
+      return NextResponse.json({ data: null, error: '会議の削除に失敗しました' }, { status: 500 });
+    }
+
+    return new NextResponse(null, { status: 204 });
+  } catch (err) {
+    console.error('会議の削除中にエラーが発生しました:', err instanceof Error ? err.message : err);
+    return NextResponse.json({ data: null, error: '会議の削除中にエラーが発生しました' }, { status: 500 });
   }
 }

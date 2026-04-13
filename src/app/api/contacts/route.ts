@@ -18,7 +18,7 @@ const createContactSchema = z.object({
   department: sanitizedStringNullable(200),
   position: sanitizedStringNullable(200),
   email: z.string().email('メールアドレスの形式が不正です').max(200).nullable().optional(),
-  phone: z.string().max(50).nullable().optional(),
+  phone: z.string().max(50).transform(stripHtml).nullable().optional(),
   tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
   assigned_to: z.string().uuid().optional(),
   note: sanitizedStringNullable(2000),
@@ -141,7 +141,7 @@ export async function POST(
       full_name: parsed.data.full_name,
       assigned_to: parsed.data.assigned_to ?? auth.userId,
       source: parsed.data.source ?? 'manual',
-      tier: parsed.data.tier ?? 4,
+      tier: parsed.data.tier ?? 3,
     };
     if (parsed.data.company_name !== undefined) insertData.company_name = parsed.data.company_name;
     if (parsed.data.department !== undefined) insertData.department = parsed.data.department;

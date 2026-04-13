@@ -65,7 +65,7 @@ const initialForm: CreateFormData = {
   position: '',
   email: '',
   phone: '',
-  tier: '4',
+  tier: '3',
   source: 'manual',
   note: '',
 };
@@ -256,18 +256,20 @@ function ContactsContent() {
                 setAssignedToFilter(e.target.value);
                 setPage(1);
               }}
-              placeholder="担当者で絞り込み"
+              placeholder="担当者: 全て"
             />
           </div>
         )}
       </div>
 
       {/* ティアタブ */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" role="tablist">
         {TIER_TABS.map((tab) => (
           <button
             key={tab.value}
             type="button"
+            role="tab"
+            aria-selected={tier === tab.value}
             onClick={() => handleTierChange(tab.value)}
             className={`px-3 py-1.5 text-sm font-medium rounded-md border transition-colors ${
               tier === tab.value
@@ -302,11 +304,17 @@ function ContactsContent() {
         </div>
       ) : contacts.length === 0 ? (
         <div className="py-16 text-center text-sm text-text-secondary space-y-3">
-          <p>コンタクトがまだありません。最初のコンタクトを登録しましょう</p>
-          <Button size="sm" onClick={() => setShowModal(true)}>
-            <Plus className="h-4 w-4" />
-            コンタクトを追加
-          </Button>
+          {searchSubmitted || tier !== 'all' ? (
+            <p>条件に一致するコンタクトがありません</p>
+          ) : (
+            <>
+              <p>コンタクトがまだありません。最初のコンタクトを登録しましょう</p>
+              <Button size="sm" onClick={() => setShowModal(true)}>
+                <Plus className="h-4 w-4" />
+                コンタクトを追加
+              </Button>
+            </>
+          )}
         </div>
       ) : (
         <>

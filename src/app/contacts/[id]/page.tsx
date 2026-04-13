@@ -50,6 +50,7 @@ export default function ContactDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   // editable fields
@@ -179,6 +180,7 @@ export default function ContactDetailPage() {
         setSaveMsg(msg);
         setTimeout(() => setSaveMsg(null), 3000);
       } else {
+        setIsDirty(false);
         setSaveMsg('保存しました');
         setTimeout(() => setSaveMsg(null), 3000);
         fetchContact();
@@ -203,6 +205,16 @@ export default function ContactDetailPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [handleSave]);
+
+  // beforeunload: 未保存の変更がある場合に警告
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   const meetingsTotalPages = Math.max(1, Math.ceil(meetingsTotal / MEETINGS_PAGE_SIZE));
 
@@ -262,24 +274,24 @@ export default function ContactDetailPage() {
                 <Input
                   label="氏名"
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={(e) => { setFullName(e.target.value); setIsDirty(true); }}
                 />
                 <Input
                   label="会社名"
                   value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
+                  onChange={(e) => { setCompanyName(e.target.value); setIsDirty(true); }}
                 />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Input
                   label="部署"
                   value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
+                  onChange={(e) => { setDepartment(e.target.value); setIsDirty(true); }}
                 />
                 <Input
                   label="役職"
                   value={position}
-                  onChange={(e) => setPosition(e.target.value)}
+                  onChange={(e) => { setPosition(e.target.value); setIsDirty(true); }}
                 />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -288,7 +300,7 @@ export default function ContactDetailPage() {
                     label="メールアドレス"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => { setEmail(e.target.value); setIsDirty(true); }}
                   />
                   {email && (
                     <a href={`mailto:${email}`} className="text-xs text-accent hover:underline">
@@ -301,7 +313,7 @@ export default function ContactDetailPage() {
                     label="電話番号"
                     type="tel"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => { setPhone(e.target.value); setIsDirty(true); }}
                   />
                   {phone && (
                     <a href={`tel:${phone}`} className="text-xs text-accent hover:underline">
@@ -314,13 +326,13 @@ export default function ContactDetailPage() {
                 label="ティア"
                 options={tierOptions}
                 value={tier}
-                onChange={(e) => setTier(e.target.value)}
+                onChange={(e) => { setTier(e.target.value); setIsDirty(true); }}
               />
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-text">メモ</label>
                 <textarea
                   value={note}
-                  onChange={(e) => setNote(e.target.value)}
+                  onChange={(e) => { setNote(e.target.value); setIsDirty(true); }}
                   rows={4}
                   className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
                 />

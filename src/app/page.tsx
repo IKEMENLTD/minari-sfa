@@ -43,6 +43,7 @@ interface ReminderItem {
 interface PhaseSummaryItem {
   phase: DealPhase;
   count: number;
+  revenue: number;
 }
 
 interface RecentMeetingItem {
@@ -88,6 +89,15 @@ function isToday(dateStr: string): boolean {
   const d = new Date(dateStr);
   d.setHours(0, 0, 0, 0);
   return d.getTime() === today.getTime();
+}
+
+function isTomorrow(dateStr: string): boolean {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime() === tomorrow.getTime();
 }
 
 const PHASE_ORDER: DealPhase[] = ['proposal_planned', 'proposal_active', 'waiting', 'follow_up', 'active'];
@@ -182,6 +192,45 @@ export default function DashboardPage() {
           );
         })}
       </div>
+
+      {/* フェーズ別売上サマリー */}
+      {!loading && data && data.phaseSummary.some((s) => s.revenue > 0) && (
+        <Card>
+          <CardHeader>
+            <h2 className="text-sm font-semibold text-text">フェーズ別売上パイプライン</h2>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-2">
+              {PHASE_ORDER.map((phase) => {
+                const item = data.phaseSummary.find((s) => s.phase === phase);
+                const revenue = item?.revenue ?? 0;
+                const totalRevenue = data.phaseSummary.reduce((sum, s) => sum + s.revenue, 0);
+                const pct = totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0;
+                return (
+                  <div key={phase} className="flex items-center gap-3">
+                    <span className="text-xs text-text-secondary w-24 shrink-0">{PHASE_LABEL[phase]}</span>
+                    <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-accent/60 rounded-full transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-medium text-text w-28 text-right shrink-0">
+                      {revenue.toLocaleString()}円
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="border-t border-border pt-2 mt-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-text">合計</span>
+                <span className="text-sm font-semibold text-text">
+                  {data.phaseSummary.reduce((sum, s) => sum + s.revenue, 0).toLocaleString()}円
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 未対応問い合わせ + 月別件数 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -285,6 +334,7 @@ export default function DashboardPage() {
               {data.reminders.slice(0, 20).map((r) => {
                 const overdue = r.next_action_date ? isOverdue(r.next_action_date) : false;
                 const today = r.next_action_date ? isToday(r.next_action_date) : false;
+                const tomorrow = r.next_action_date ? isTomorrow(r.next_action_date) : false;
                 return (
                   <Link
                     key={r.id}
@@ -294,13 +344,15 @@ export default function DashboardPage() {
                         ? 'border-red-500/30 bg-red-500/10'
                         : today
                           ? 'border-yellow-500/30 bg-yellow-500/10'
-                          : 'border-border bg-surface'
+                          : tomorrow
+                            ? 'border-blue-500/30 bg-blue-500/10'
+                            : 'border-border bg-surface'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-medium text-accent">{r.title}</span>
-                      <Badge variant={overdue ? 'danger' : today ? 'warning' : 'default'}>
-                        {r.next_action_date ? formatDateShort(r.next_action_date) : '-'}
+                      <Badge variant={overdue ? 'danger' : today ? 'warning' : tomorrow ? 'info' : 'default'}>
+                        {r.next_action_date ? (tomorrow ? `明日 ${formatDateShort(r.next_action_date)}` : formatDateShort(r.next_action_date)) : '-'}
                       </Badge>
                     </div>
                     <p className="text-xs text-text-secondary truncate">
@@ -328,6 +380,7 @@ export default function DashboardPage() {
                     {data.reminders.slice(0, 20).map((r) => {
                       const overdue = r.next_action_date ? isOverdue(r.next_action_date) : false;
                       const today = r.next_action_date ? isToday(r.next_action_date) : false;
+                      const tomorrow = r.next_action_date ? isTomorrow(r.next_action_date) : false;
                       return (
                         <TableRow
                           key={r.id}
@@ -336,7 +389,9 @@ export default function DashboardPage() {
                               ? 'bg-red-500/10'
                               : today
                                 ? 'bg-yellow-500/10'
-                                : ''
+                                : tomorrow
+                                  ? 'bg-blue-500/10'
+                                  : ''
                           }
                         >
                           <TableCell>
@@ -351,8 +406,8 @@ export default function DashboardPage() {
                             <span className="truncate max-w-[200px] inline-block">{r.next_action ?? '-'}</span>
                           </TableCell>
                           <TableCell>
-                            <span className={overdue ? 'text-red-400 font-medium' : today ? 'text-yellow-400 font-medium' : ''}>
-                              {r.next_action_date ? formatDateShort(r.next_action_date) : '-'}
+                            <span className={overdue ? 'text-red-400 font-medium' : today ? 'text-yellow-400 font-medium' : tomorrow ? 'text-blue-400 font-medium' : ''}>
+                              {r.next_action_date ? (tomorrow ? `明日 ${formatDateShort(r.next_action_date)}` : formatDateShort(r.next_action_date)) : '-'}
                             </span>
                           </TableCell>
                           <TableCell>

@@ -50,6 +50,7 @@ export async function GET(
 
     const phase = searchParams.get('phase');
     const assignedTo = searchParams.get('assigned_to');
+    const search = searchParams.get('search')?.trim() ?? '';
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE));
     const offset = (page - 1) * limit;
@@ -58,6 +59,11 @@ export async function GET(
       .from('deals')
       .select('*, contact:contacts(*)')
       .order('updated_at', { ascending: false });
+
+    // 検索: title, deliverable, client_contact_name を部分一致検索
+    if (search) {
+      query = query.or(`title.ilike.%${search}%,deliverable.ilike.%${search}%,client_contact_name.ilike.%${search}%`);
+    }
 
     if (phase) {
       const validPhases = ['proposal_planned', 'proposal_active', 'waiting', 'follow_up', 'active'];

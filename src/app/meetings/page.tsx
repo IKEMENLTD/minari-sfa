@@ -191,7 +191,11 @@ function MeetingsContent() {
       </div>
 
       {syncMessage && (
-        <div className="rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent whitespace-pre-wrap">
+        <div className={`rounded-md border px-4 py-3 text-sm whitespace-pre-wrap ${
+          syncMessage.includes('エラー')
+            ? 'border-red-500/30 bg-red-500/10 text-red-400'
+            : 'border-green-500/30 bg-green-500/10 text-green-400'
+        }`}>
           {syncMessage}
         </div>
       )}
@@ -212,11 +216,13 @@ function MeetingsContent() {
       </div>
 
       {/* フィルタータブ */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" role="tablist">
         {FILTER_TABS.map((tab) => (
           <button
             key={tab.value}
             type="button"
+            role="tab"
+            aria-selected={unlinked === tab.value}
             onClick={() => handleFilterChange(tab.value)}
             className={`px-3 py-1.5 text-sm font-medium rounded-md border transition-colors ${
               unlinked === tab.value
@@ -251,13 +257,19 @@ function MeetingsContent() {
         </div>
       ) : meetings.length === 0 ? (
         <div className="py-16 text-center text-sm text-text-secondary space-y-3">
-          <p>会議記録がまだありません。最初の会議を登録しましょう</p>
-          <Link
-            href="/meetings/new"
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-all"
-          >
-            会議を登録
-          </Link>
+          {searchSubmitted || filter === 'unlinked' ? (
+            <p>条件に一致する会議記録がありません</p>
+          ) : (
+            <>
+              <p>会議記録がまだありません。最初の会議を登録しましょう</p>
+              <Link
+                href="/meetings/new"
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-all"
+              >
+                会議を登録
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <>

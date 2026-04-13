@@ -74,16 +74,47 @@ const DEAL_FIELDS: readonly FieldDefinition[] = [
 ] as const;
 
 // ---------------------------------------------------------------------------
-// CSVパース
+// CSVパース (RFC 4180 準拠)
 // ---------------------------------------------------------------------------
+
+function parseCSVLine(line: string, delimiter: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+
+    if (inQuotes) {
+      if (char === '"' && next === '"') {
+        current += '"';
+        i++; // skip escaped quote
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        current += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === delimiter) {
+        fields.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+  }
+  fields.push(current.trim());
+  return fields;
+}
 
 function parseCSV(text: string): ParsedCSV {
   const separator = text.includes('\t') ? '\t' : ',';
   const lines = text.split('\n').filter((l) => l.trim());
-  const headers = lines[0].split(separator).map((h) => h.trim().replace(/^"|"$/g, ''));
-  const rows = lines.slice(1).map((l) =>
-    l.split(separator).map((c) => c.trim().replace(/^"|"$/g, '')),
-  );
+  const headers = parseCSVLine(lines[0], separator);
+  const rows = lines.slice(1).map((l) => parseCSVLine(l, separator));
   return { headers, rows };
 }
 
@@ -141,6 +172,8 @@ export default function ImportPage() {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [encoding, setEncoding] = useState<string>('UTF-8');
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fields = importType === 'contacts' ? CONTACT_FIELDS : DEAL_FIELDS;
@@ -183,14 +216,15 @@ export default function ImportPage() {
           handleFileRead(reader.result, file.name);
         }
       };
-      reader.readAsText(file, 'UTF-8');
+      reader.readAsText(file, encoding);
     },
-    [handleFileRead],
+    [handleFileRead, encoding],
   );
 
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
+      setIsDragOver(false);
       const file = e.dataTransfer.files[0];
       if (!file) return;
       const reader = new FileReader();
@@ -199,13 +233,23 @@ export default function ImportPage() {
           handleFileRead(reader.result, file.name);
         }
       };
-      reader.readAsText(file, 'UTF-8');
+      reader.readAsText(file, encoding);
     },
-    [handleFileRead],
+    [handleFileRead, encoding],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
   }, []);
 
   const handleMappingChange = useCallback((fieldKey: string, csvHeader: string) => {
@@ -333,11 +377,29 @@ export default function ImportPage() {
           <h2 className="text-sm font-semibold text-text">ファイル選択</h2>
         </CardHeader>
         <CardContent>
+          <div className="flex items-center gap-4 mb-4">
+            <label className="text-xs font-medium text-text-secondary">文字コード:</label>
+            <select
+              value={encoding}
+              onChange={(e) => setEncoding(e.target.value)}
+              className="rounded border border-border bg-surface px-2 py-1 text-xs text-text"
+            >
+              <option value="UTF-8">UTF-8</option>
+              <option value="Shift_JIS">Shift_JIS</option>
+              <option value="EUC-JP">EUC-JP</option>
+            </select>
+          </div>
           <div
             onDrop={handleDrop}
             onDragOver={handleDragOver}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
             onClick={() => fileInputRef.current?.click()}
-            className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-border hover:border-accent/50 p-8 cursor-pointer transition-colors"
+            className={`flex flex-col items-center justify-center gap-3 border-2 border-dashed p-8 cursor-pointer transition-colors ${
+              isDragOver
+                ? 'border-accent bg-accent/10'
+                : 'border-border hover:border-accent/50'
+            }`}
           >
             <Upload className="h-8 w-8 text-text-secondary" />
             <p className="text-sm text-text-secondary">

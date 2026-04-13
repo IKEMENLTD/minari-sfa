@@ -15,7 +15,7 @@ const createMeetingSchema = z.object({
   deal_id: z.string().uuid().nullable().optional(),
   meeting_date: z.string().min(1, '会議日は必須です'),
   source: z.enum(['tldv', 'teams_copilot', 'manual']),
-  source_id: z.string().max(500).nullable().optional(),
+  source_id: z.string().max(500).transform(stripHtml).nullable().optional(),
   participants: z.array(z.string().max(200).transform(stripHtml)).max(50).optional(),
   tool: z.enum(['teams', 'zoom', 'meet', 'in_person', 'phone']).nullable().optional(),
   transcript_text: z.string().max(500_000).transform(stripHtml).optional(),
@@ -36,6 +36,7 @@ export async function GET(
     const { searchParams } = new URL(request.url);
 
     const contactId = searchParams.get('contact_id');
+    const dealId = searchParams.get('deal_id');
     const unlinked = searchParams.get('unlinked');
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE));
@@ -43,7 +44,7 @@ export async function GET(
 
     let query = supabase
       .from('meetings')
-      .select('*')
+      .select('*, contact:contacts(id, full_name, company_name)')
       .order('meeting_date', { ascending: false });
 
     if (contactId) {
@@ -54,6 +55,16 @@ export async function GET(
         );
       }
       query = query.eq('contact_id', contactId);
+    }
+
+    if (dealId) {
+      if (!z.string().uuid().safeParse(dealId).success) {
+        return NextResponse.json(
+          { data: null, error: '無効な deal_id フォーマットです' },
+          { status: 400 }
+        );
+      }
+      query = query.eq('deal_id', dealId);
     }
 
     if (unlinked === 'true') {
@@ -74,7 +85,29 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ data: (data ?? []) as MeetingRow[], error: null });
+    // 各会議の最新サマリーテキストを取得
+    const meetingIds = (data ?? []).map((m: Record<string, unknown>) => m.id as string);
+    let summaryMap: Record<string, string> = {};
+    if (meetingIds.length > 0) {
+      const { data: summaries } = await supabase
+        .from('summaries')
+        .select('meeting_id, summary_text')
+        .in('meeting_id', meetingIds)
+        .order('created_at', { ascending: false });
+      if (summaries) {
+        for (const s of summaries) {
+          if (!summaryMap[s.meeting_id]) {
+            summaryMap[s.meeting_id] = s.summary_text;
+          }
+        }
+      }
+    }
+    const meetings = (data ?? []).map((m: Record<string, unknown>) => ({
+      ...m,
+      summary_text: summaryMap[m.id as string] ?? null,
+    }));
+
+    return NextResponse.json({ data: meetings as MeetingRow[], error: null });
   } catch (err) {
     console.error('会議一覧の取得中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(

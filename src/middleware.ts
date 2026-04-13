@@ -36,7 +36,11 @@ async function verifySessionToken(cookieValue: string): Promise<boolean> {
   const sig = cookieValue.slice(dotIndex + 1);
   if (!sessionId || !sig) return false;
 
-  const hmacSecret = process.env.SITE_PASSWORD ?? 'fallback-secret';
+  const hmacSecret = process.env.SITE_PASSWORD;
+  if (!hmacSecret) {
+    console.error('SITE_PASSWORD 環境変数が設定されていません');
+    return false;
+  }
   const encoder = new TextEncoder();
 
   const key = await crypto.subtle.importKey(

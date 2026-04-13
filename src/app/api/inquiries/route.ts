@@ -78,7 +78,41 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ data: (data ?? []) as InquiryRow[], error: null });
+    // --- 月別サマリー（直近2ヶ月） ---
+    const now = new Date();
+    const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const twoMonthsAgoStr = twoMonthsAgo.toISOString().slice(0, 10);
+
+    let summaryQuery = supabase
+      .from('inquiries')
+      .select('created_at, source')
+      .gte('created_at', twoMonthsAgoStr)
+      .order('created_at', { ascending: false });
+
+    if (auth.role === 'member') {
+      summaryQuery = summaryQuery.eq('assigned_to', auth.userId);
+    }
+
+    const { data: summaryRows } = await summaryQuery;
+
+    const monthMap: Record<string, { website: number; phone: number; other: number; total: number }> = {};
+    for (const row of summaryRows ?? []) {
+      const month = (row.created_at as string).slice(0, 7); // "2026-04"
+      if (!monthMap[month]) {
+        monthMap[month] = { website: 0, phone: 0, other: 0, total: 0 };
+      }
+      const src = row.source as string;
+      if (src === 'website') monthMap[month].website++;
+      else if (src === 'phone') monthMap[month].phone++;
+      else monthMap[month].other++;
+      monthMap[month].total++;
+    }
+
+    const monthlySummary = Object.entries(monthMap)
+      .map(([month, counts]) => ({ month, ...counts }))
+      .sort((a, b) => b.month.localeCompare(a.month));
+
+    return NextResponse.json({ data: (data ?? []) as InquiryRow[], monthlySummary, error: null });
   } catch (err) {
     console.error('問い合わせ一覧の取得中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(

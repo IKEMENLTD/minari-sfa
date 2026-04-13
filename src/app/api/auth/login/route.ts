@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 
   // HMAC署名付きセッショントークンを生成（認証バイパス防止）
   const sessionId = randomUUID();
-  const hmacSecret = process.env.SITE_PASSWORD ?? 'fallback-secret';
+  const hmacSecret = process.env.SITE_PASSWORD!;
   const signature = createHmac('sha256', hmacSecret).update(sessionId).digest('hex');
   const token = `${sessionId}.${signature}`;
 

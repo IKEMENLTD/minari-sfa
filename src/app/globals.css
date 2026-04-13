@@ -11,7 +11,7 @@
   --color-muted: #f3f4f6;
   --color-muted-hover: #e5e7eb;
   --color-muted-foreground: #4b5563;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", ui-sans-serif, system-ui, sans-serif;
 }
 
 html {

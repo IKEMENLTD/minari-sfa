@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { validateAuth, validateContentType, isAuthError } from '@/lib/auth';
+import { validateAuth, validateContentType, isAuthError, requireRole } from '@/lib/auth';
 import { stripHtml } from '@/lib/sanitize';
 import type { DealWithContact, ApiResult } from '@/types';
 
@@ -33,6 +33,7 @@ const updateDealSchema = z.object({
   billing_month: sanitizedStringNullable(50),
   client_contact_name: sanitizedStringNullable(200),
   revenue_note: sanitizedStringNullable(1000),
+  expected_updated_at: z.string().optional(),
 }).strict();
 
 // ---------------------------------------------------------------------------
@@ -150,6 +151,17 @@ export async function PATCH(
 
     const supabase = createServerSupabaseClient();
 
+    // 楽観的ロック: expected_updated_at が指定されている場合、現在のレコードと比較
+    if (parsed.data.expected_updated_at) {
+      const { data: current } = await supabase.from('deals').select('updated_at').eq('id', id).single();
+      if (current && current.updated_at !== parsed.data.expected_updated_at) {
+        return NextResponse.json(
+          { data: null, error: '他のユーザーによって更新されています。画面を再読み込みしてください。' },
+          { status: 409 }
+        );
+      }
+    }
+
     // memberロールは自分の担当リソースのみ更新可能（IDOR防止）
     if (auth.role === 'member') {
       const { data: existing } = await supabase.from('deals').select('assigned_to').eq('id', id).single();
@@ -172,9 +184,7 @@ export async function PATCH(
       target_country, tax_type, has_movement, status_detail, billing_month,
       client_contact_name, revenue_note,
     } = parsed.data;
-    const updateData: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
+    const updateData: Record<string, unknown> = {};
     if (contact_id !== undefined) updateData.contact_id = contact_id;
     if (title !== undefined) updateData.title = title;
     if (phase !== undefined) updateData.phase = phase;
@@ -244,5 +254,47 @@ export async function PATCH(
       { data: null, error: '案件の更新中にエラーが発生しました' },
       { status: 500 }
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/deals/[id] - 案件削除
+// ---------------------------------------------------------------------------
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<NextResponse<ApiResult<null>>> {
+  const auth = await validateAuth(request);
+  if (isAuthError(auth)) return auth as NextResponse<ApiResult<null>>;
+  const roleError = requireRole(auth, ['admin']);
+  if (roleError) return roleError as NextResponse<ApiResult<null>>;
+
+  try {
+    const { id } = await params;
+    if (!uuidSchema.safeParse(id).success) {
+      return NextResponse.json({ data: null, error: '無効なIDフォーマットです' }, { status: 400 });
+    }
+
+    const supabase = createServerSupabaseClient();
+
+    const { data: existing } = await supabase.from('deals').select('id').eq('id', id).single();
+    if (!existing) {
+      return NextResponse.json({ data: null, error: '指定された案件が見つかりません' }, { status: 404 });
+    }
+
+    const { error } = await supabase.from('deals').delete().eq('id', id);
+    if (error) {
+      if (error.code === '23503') {
+        return NextResponse.json({ data: null, error: '関連データが存在するため削除できません' }, { status: 409 });
+      }
+      console.error('案件の削除に失敗しました:', error.message);
+      return NextResponse.json({ data: null, error: '案件の削除に失敗しました' }, { status: 500 });
+    }
+
+    return new NextResponse(null, { status: 204 });
+  } catch (err) {
+    console.error('案件の削除中にエラーが発生しました:', err instanceof Error ? err.message : err);
+    return NextResponse.json({ data: null, error: '案件の削除中にエラーが発生しました' }, { status: 500 });
   }
 }

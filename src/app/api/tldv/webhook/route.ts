@@ -59,25 +59,23 @@ export async function POST(
     const rawBody = await request.text();
     const webhookSecret = process.env.TLDV_WEBHOOK_SECRET;
 
-    // 本番環境ではWebhookシークレット必須
-    if (process.env.NODE_ENV === 'production' && !webhookSecret) {
-      console.error('TLDV_WEBHOOK_SECRET が本番環境で設定されていません');
+    // Webhookシークレット必須
+    if (!webhookSecret) {
+      console.error('TLDV_WEBHOOK_SECRET が設定されていません');
       return NextResponse.json(
         { data: null, error: 'Webhookの設定に問題があります' },
         { status: 500 }
       );
     }
 
-    // 署名検証（環境変数がある場合のみ）
-    if (webhookSecret) {
-      const signature = request.headers.get('x-tldv-signature')
-        ?? request.headers.get('x-webhook-signature');
-      if (!verifyWebhookSignature(rawBody, signature, webhookSecret)) {
-        return NextResponse.json(
-          { data: null, error: 'Webhook署名の検証に失敗しました' },
-          { status: 401 }
-        );
-      }
+    // 署名検証
+    const signature = request.headers.get('x-tldv-signature')
+      ?? request.headers.get('x-webhook-signature');
+    if (!verifyWebhookSignature(rawBody, signature, webhookSecret)) {
+      return NextResponse.json(
+        { data: null, error: 'Webhook署名の検証に失敗しました' },
+        { status: 403 }
+      );
     }
 
     // Zodバリデーション

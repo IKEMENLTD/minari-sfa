@@ -29,7 +29,11 @@ function verifySessionToken(cookieValue: string): boolean {
   const sig = cookieValue.slice(dotIndex + 1);
   if (!sessionId || !sig) return false;
 
-  const hmacSecret = process.env.SITE_PASSWORD ?? 'fallback-secret';
+  const hmacSecret = process.env.SITE_PASSWORD;
+  if (!hmacSecret) {
+    console.error('SITE_PASSWORD 環境変数が設定されていません');
+    return false;
+  }
   const expected = createHmac('sha256', hmacSecret).update(sessionId).digest('hex');
 
   if (sig.length !== expected.length) return false;
@@ -78,13 +82,13 @@ export function isAuthError(
 /**
  * POST/PATCH/PUT リクエストの Content-Type が application/json であることを検証する。
  * text/plain や multipart/form-data での CSRF 攻撃を防止する。
- * DELETE はリクエストボディを持たない場合があるため対象外。
+ * DELETE もボディを持つ場合があるため対象に含める。
  */
 export function validateContentType(
   request: NextRequest
 ): NextResponse<ApiResult<null>> | null {
   const method = request.method.toUpperCase();
-  if (['POST', 'PATCH', 'PUT'].includes(method)) {
+  if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
     const contentType = request.headers.get('Content-Type') ?? '';
     if (!contentType.includes('application/json')) {
       return NextResponse.json(

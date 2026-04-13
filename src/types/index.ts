@@ -155,6 +155,7 @@ export interface UpdateContactRequest {
   tier?: 1 | 2 | 3 | 4;
   assigned_to?: string;
   note?: string | null;
+  expected_updated_at?: string;
 }
 
 /** POST /api/deals (旧: POST /api/meetings) */
@@ -201,6 +202,7 @@ export interface UpdateDealRequest {
   billing_month?: string | null;
   client_contact_name?: string | null;
   revenue_note?: string | null;
+  expected_updated_at?: string;
 }
 
 /** POST /api/meetings */
@@ -222,6 +224,7 @@ export interface UpdateMeetingRequest {
   meeting_date?: string;
   participants?: string[];
   tool?: MeetingTool | null;
+  expected_updated_at?: string;
 }
 
 /** POST /api/inquiries */
@@ -241,6 +244,7 @@ export interface UpdateInquiryRequest {
   contact_id?: string | null;
   assigned_to?: string | null;
   note?: string | null;
+  expected_updated_at?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +315,7 @@ export interface MeetingSummaryResult {
 export interface PhaseSummary {
   phase: DealPhase;
   count: number;
+  revenue: number;
 }
 
 /** 問い合わせ月別集計 */

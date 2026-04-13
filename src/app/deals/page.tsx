@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { AlertCircle, ArrowUpDown, ArrowUp, ArrowDown, Plus, X } from 'lucide-react';
+import { AlertCircle, ArrowUpDown, ArrowUp, ArrowDown, Plus, X, Search } from 'lucide-react';
 import { formatDateShort } from '@/lib/format';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +49,7 @@ function DealsContent() {
   );
   const [page, setPage] = useState(Number(searchParams.get('page') ?? '1'));
   const [assignedToFilter, setAssignedToFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') ?? '');
   const [sortOrder, setSortOrder] = useState<SortOrder>('');
   const [assignedToOptions, setAssignedToOptions] = useState<{ value: string; label: string }[]>([]);
   const abortRef = useRef<AbortController | null>(null);
@@ -60,6 +61,10 @@ function DealsContent() {
   const [createPhase, setCreatePhase] = useState<DealPhase>('proposal_planned');
   const [createNextAction, setCreateNextAction] = useState('');
   const [createNextActionDate, setCreateNextActionDate] = useState('');
+  const [createProbability, setCreateProbability] = useState('');
+  const [createRevenue, setCreateRevenue] = useState('');
+  const [createDeliverable, setCreateDeliverable] = useState('');
+  const [createDeadline, setCreateDeadline] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [contactOptions, setContactOptions] = useState<{ value: string; label: string }[]>([]);
@@ -102,6 +107,10 @@ function DealsContent() {
           phase: createPhase,
           next_action: createNextAction || null,
           next_action_date: createNextActionDate || null,
+          probability: createProbability || null,
+          revenue: createRevenue ? Number(createRevenue) : null,
+          deliverable: createDeliverable || null,
+          deadline: createDeadline || null,
         }),
       });
       const json: { error?: string | null } = await res.json();
@@ -114,6 +123,10 @@ function DealsContent() {
         setCreatePhase('proposal_planned');
         setCreateNextAction('');
         setCreateNextActionDate('');
+        setCreateProbability('');
+        setCreateRevenue('');
+        setCreateDeliverable('');
+        setCreateDeadline('');
         fetchDeals();
       }
     } catch {
@@ -136,6 +149,7 @@ function DealsContent() {
     try {
       const params = new URLSearchParams();
       if (phase) params.set('phase', phase);
+      if (searchQuery) params.set('search', searchQuery);
       params.set('page', String(page));
       params.set('limit', String(PAGE_SIZE));
 
@@ -188,7 +202,7 @@ function DealsContent() {
       clearTimeout(timeoutId);
       setLoading(false);
     }
-  }, [phase, page, assignedToFilter, sortOrder]);
+  }, [phase, page, searchQuery, assignedToFilter, sortOrder]);
 
   useEffect(() => {
     fetchDeals();
@@ -205,20 +219,28 @@ function DealsContent() {
     return () => window.removeEventListener('keydown', handler);
   }, [showModal]);
 
+  const updateUrl = (newPhase: DealPhase | '', newSearch: string, newPage: number) => {
+    const params = new URLSearchParams();
+    if (newPhase) params.set('phase', newPhase);
+    if (newSearch) params.set('search', newSearch);
+    if (newPage > 1) params.set('page', String(newPage));
+    router.replace(`/deals?${params.toString()}`);
+  };
+
   const handlePhaseChange = (value: DealPhase | '') => {
     setPhase(value);
     setPage(1);
-    const params = new URLSearchParams();
-    if (value) params.set('phase', value);
-    router.replace(`/deals?${params.toString()}`);
+    updateUrl(value, searchQuery, 1);
+  };
+
+  const handleSearch = () => {
+    setPage(1);
+    updateUrl(phase, searchQuery, 1);
   };
 
   const handlePageChange = (newPage: number) => {
     setPage(newPage);
-    const params = new URLSearchParams();
-    if (phase) params.set('phase', phase);
-    params.set('page', String(newPage));
-    router.replace(`/deals?${params.toString()}`);
+    updateUrl(phase, searchQuery, newPage);
   };
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -233,13 +255,30 @@ function DealsContent() {
         </Button>
       </div>
 
+      {/* 検索 */}
+      <div className="flex gap-2">
+        <div className="flex-1 max-w-xs">
+          <Input
+            placeholder="案件名・制作物・顧客担当者で検索..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          />
+        </div>
+        <Button variant="secondary" size="sm" onClick={handleSearch}>
+          <Search className="h-4 w-4" />
+        </Button>
+      </div>
+
       {/* フェーズタブ + 担当者フィルター */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" role="tablist">
           {TABS.map((tab) => (
             <button
               key={tab.value}
               type="button"
+              role="tab"
+              aria-selected={phase === tab.value}
               onClick={() => handlePhaseChange(tab.value as DealPhase | '')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md border transition-colors ${
                 phase === tab.value
@@ -260,7 +299,7 @@ function DealsContent() {
                 setAssignedToFilter(e.target.value);
                 setPage(1);
               }}
-              placeholder="担当者で絞り込み"
+              placeholder="担当者: 全て"
             />
           </div>
         )}
@@ -288,11 +327,17 @@ function DealsContent() {
         </div>
       ) : deals.length === 0 ? (
         <div className="py-16 text-center text-sm text-text-secondary space-y-3">
-          <p>案件がまだありません。最初の案件を登録しましょう</p>
-          <Button size="sm" onClick={() => { setShowModal(true); fetchContactOptions(); }}>
-            <Plus className="h-4 w-4" />
-            案件を追加
-          </Button>
+          {phase || assignedToFilter || searchQuery ? (
+            <p>条件に一致する案件がありません</p>
+          ) : (
+            <>
+              <p>案件がまだありません。最初の案件を登録しましょう</p>
+              <Button size="sm" onClick={() => { setShowModal(true); fetchContactOptions(); }}>
+                <Plus className="h-4 w-4" />
+                案件を追加
+              </Button>
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -537,6 +582,32 @@ function DealsContent() {
                     value={createNextActionDate}
                     onChange={(e) => setCreateNextActionDate(e.target.value)}
                   />
+                  <Select
+                    label="受注確率"
+                    options={probabilityOptions}
+                    value={createProbability}
+                    onChange={(e) => setCreateProbability(e.target.value)}
+                    placeholder="未設定"
+                  />
+                  <Input
+                    label="報酬（円）"
+                    type="number"
+                    value={createRevenue}
+                    onChange={(e) => setCreateRevenue(e.target.value)}
+                    placeholder="例: 500000"
+                  />
+                  <Input
+                    label="制作物"
+                    value={createDeliverable}
+                    onChange={(e) => setCreateDeliverable(e.target.value)}
+                    placeholder="制作物の内容"
+                  />
+                  <Input
+                    label="納期"
+                    type="date"
+                    value={createDeadline}
+                    onChange={(e) => setCreateDeadline(e.target.value)}
+                  />
                 </div>
                 <div className="border-t border-border px-5 py-3 flex items-center justify-end gap-2">
                   <Button variant="secondary" size="sm" type="button" onClick={() => setShowModal(false)}>
@@ -556,6 +627,14 @@ function DealsContent() {
 }
 
 const phaseOptions = DEAL_PHASES.map((p) => ({ value: p.id, label: p.name }));
+
+const probabilityOptions = [
+  { value: 'high', label: '高' },
+  { value: 'medium', label: '中' },
+  { value: 'low', label: '低' },
+  { value: 'very_low', label: '極低' },
+  { value: 'unknown', label: '不明' },
+];
 
 export default function DealsPage() {
   return (

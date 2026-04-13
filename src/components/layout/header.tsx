@@ -1,9 +1,14 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { User, LogOut, Search } from 'lucide-react';
 
 function Header() {
+  const [isMac, setIsMac] = useState(true);
+  useEffect(() => {
+    setIsMac(/Mac|iPod|iPhone|iPad/.test(navigator.platform));
+  }, []);
+
   const handleLogout = useCallback(async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
@@ -27,11 +32,10 @@ function Header() {
           aria-label="検索を開く"
         >
           <Search className="h-4 w-4" />
-          <span className="hidden sm:inline text-xs">Cmd+K</span>
+          <span className="hidden sm:inline text-xs">{isMac ? 'Cmd+K' : 'Ctrl+K'}</span>
         </button>
         <div className="h-4 w-px bg-border" />
         <User className="h-4 w-4" />
-        <span>内藤</span>
         <button
           type="button"
           onClick={handleLogout}

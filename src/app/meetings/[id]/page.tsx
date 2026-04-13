@@ -69,6 +69,10 @@ export default function MeetingDetailPage() {
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [linkingParticipant, setLinkingParticipant] = useState<string | null>(null);
 
+  // AI要約生成
+  const [summarizing, setSummarizing] = useState(false);
+  const [summarizeMsg, setSummarizeMsg] = useState<string | null>(null);
+
   // AI次アクション採用
   const [adoptingAction, setAdoptingAction] = useState(false);
   const [adoptMsg, setAdoptMsg] = useState<string | null>(null);
@@ -163,7 +167,7 @@ export default function MeetingDetailPage() {
     }
   }, [meeting, fetchSuggestions]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!id) return;
     setSaving(true);
     setSaveMsg(null);
@@ -193,7 +197,19 @@ export default function MeetingDetailPage() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [id, contactId, dealId, fetchMeeting]);
+
+  // Ctrl+S / Cmd+S で保存
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleSave]);
 
   // コンタクト候補をワンクリックで紐付け
   const handleLinkContact = async (matchContactId: string, participantName: string) => {
@@ -289,6 +305,32 @@ export default function MeetingDetailPage() {
     );
   }
 
+  const handleSummarize = async (force: boolean) => {
+    setSummarizing(true);
+    setSummarizeMsg(null);
+    try {
+      const url = `/api/meetings/${id}/summarize${force ? '?force=true' : ''}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        setSummarizeMsg(json.error ?? 'AI要約の生成に失敗しました');
+      } else {
+        setSummarizeMsg('AI要約の生成を開始しました。しばらくしてからページを再読み込みしてください。');
+        // 少し待ってからデータを再取得
+        setTimeout(() => fetchMeeting(), 5000);
+      }
+      setTimeout(() => setSummarizeMsg(null), 8000);
+    } catch {
+      setSummarizeMsg('AI要約の生成に失敗しました');
+      setTimeout(() => setSummarizeMsg(null), 5000);
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
   const suggestedNextAction = meeting.summary?.suggested_next_action ?? null;
   const suggestedNextActionDate = meeting.summary?.suggested_next_action_date ?? null;
 
@@ -377,15 +419,33 @@ export default function MeetingDetailPage() {
           {/* AI要約 */}
           <Card>
             <CardHeader>
-              <h2 className="text-sm font-semibold text-text">AI要約</h2>
+              <div className="flex items-center justify-between w-full">
+                <h2 className="text-sm font-semibold text-text">AI要約</h2>
+                <Button
+                  size="sm"
+                  variant={meeting.summary ? 'secondary' : 'primary'}
+                  onClick={() => handleSummarize(!!meeting.summary)}
+                  loading={summarizing}
+                  disabled={summarizing || !meeting.transcript}
+                >
+                  {meeting.summary ? '再生成' : 'AI要約を生成'}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
+              {summarizeMsg && (
+                <div className={`text-xs mb-3 px-3 py-2 rounded ${summarizeMsg.includes('失敗') ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+                  {summarizeMsg}
+                </div>
+              )}
               {meeting.summary ? (
                 <div className="text-sm text-text whitespace-pre-wrap leading-relaxed">
                   {meeting.summary.summary_text}
                 </div>
               ) : (
-                <p className="text-sm text-text-secondary py-4 text-center">AI要約未生成</p>
+                <p className="text-sm text-text-secondary py-4 text-center">
+                  {meeting.transcript ? 'AI要約未生成 - 上のボタンで生成できます' : 'AI要約未生成（議事録がありません）'}
+                </p>
               )}
             </CardContent>
           </Card>
