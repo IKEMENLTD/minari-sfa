@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createHmac } from 'crypto';
 import type { ApiResult } from '@/types';
 
 // =============================================================================
 // 認証ヘルパー
-// Supabase Auth の JWT を検証し、ユーザー情報・ロールを返す
+// Cookie（sd_auth）ベースのパスワード認証を検証する
 // =============================================================================
+
+const COOKIE_NAME = 'sd_auth';
 
 /**
  * 認証結果。成功時はユーザー情報を含む。
@@ -16,85 +18,52 @@ export interface AuthResult {
 }
 
 /**
+ * HMAC署名付きセッショントークンを検証する。
+ * トークン形式: `{uuid}.{hmac-sha256-hex}`
+ */
+function verifySessionToken(cookieValue: string): boolean {
+  const dotIndex = cookieValue.indexOf('.');
+  if (dotIndex === -1) return false;
+
+  const sessionId = cookieValue.slice(0, dotIndex);
+  const sig = cookieValue.slice(dotIndex + 1);
+  if (!sessionId || !sig) return false;
+
+  const hmacSecret = process.env.SITE_PASSWORD ?? 'fallback-secret';
+  const expected = createHmac('sha256', hmacSecret).update(sessionId).digest('hex');
+
+  if (sig.length !== expected.length) return false;
+
+  let result = 0;
+  for (let i = 0; i < sig.length; i++) {
+    result |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+/**
  * API リクエストの認証を検証する。
- * 認証失敗時は 401 レスポンスを返す。成功時は AuthResult を返す。
+ * Cookie（sd_auth）のHMAC署名を検証し、認証済みであれば AuthResult を返す。
+ * ミドルウェアでも検証済みだが、APIルートでも二重チェックする。
  *
- * 本番環境では USE_MOCK=true を禁止する（NODE_ENV=production 時はエラー）。
+ * 現時点ではパスワード共有認証のため、全ユーザーを admin として扱う。
+ * 将来 Supabase Auth に移行する際は、ここでJWT検証+ロール取得に切り替える。
  */
 export async function validateAuth(
   request: NextRequest
 ): Promise<NextResponse<ApiResult<null>> | AuthResult> {
-  // モックモードでは認証をスキップ（PoC段階で使用）
-  // WARNING: 本番移行時は USE_MOCK=false + Supabase Auth を有効化すること
-  if (process.env.USE_MOCK === 'true') {
-    if (process.env.NODE_ENV === 'production') {
-      console.error('FATAL: USE_MOCK=true is forbidden in production');
-      return NextResponse.json(
-        { data: null, error: 'サーバー設定エラー' },
-        { status: 500 }
-      );
-    }
-    return { userId: 'mock-user-id', role: 'admin' };
-  }
+  const cookie = request.cookies.get(COOKIE_NAME);
 
-  const authHeader = request.headers.get('Authorization');
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!cookie || !verifySessionToken(cookie.value)) {
     return NextResponse.json(
-      { data: null, error: '認証が必要です。Authorization ヘッダーを設定してください。' },
+      { data: null, error: '認証が必要です。ログインしてください。' },
       { status: 401 }
     );
   }
 
-  const token = authHeader.slice(7).trim();
-  if (!token) {
-    return NextResponse.json(
-      { data: null, error: '無効な認証トークンです。' },
-      { status: 401 }
-    );
-  }
-
-  // Supabase Auth の JWT を検証する
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('Supabase の環境変数が設定されていません');
-    return NextResponse.json(
-      { data: null, error: 'サーバー設定エラーが発生しました' },
-      { status: 500 }
-    );
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-
-  if (error || !user) {
-    return NextResponse.json(
-      { data: null, error: '無効な認証トークンです。' },
-      { status: 401 }
-    );
-  }
-
-  // users テーブルからロール情報を取得
-  const { createServerSupabaseClient } = await import('@/lib/supabase/server');
-  const serverSupabase = createServerSupabaseClient();
-  const { data: userData } = await serverSupabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  const validRoles = ['admin', 'manager', 'member'] as const;
-  const role = validRoles.includes(userData?.role as typeof validRoles[number])
-    ? (userData!.role as AuthResult['role'])
-    : 'member';
-
-  return { userId: user.id, role };
+  // パスワード共有認証のため、セッションIDからユーザーを識別
+  const sessionId = cookie.value.split('.')[0];
+  return { userId: sessionId, role: 'admin' };
 }
 
 /**
