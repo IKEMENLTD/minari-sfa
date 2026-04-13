@@ -38,6 +38,7 @@ interface ReminderItem {
   next_action: string | null;
   next_action_date: string | null;
   phase: DealPhase;
+  contact?: { full_name: string; company_name: string | null } | null;
 }
 
 interface PhaseSummaryItem {
@@ -51,6 +52,7 @@ interface RecentMeetingItem {
   contact_name: string | null;
   meeting_date: string;
   tool: MeetingTool | null;
+  contact?: { id: string; full_name: string; company_name: string | null } | null;
 }
 
 interface InquiryMonthlySummaryItem {
@@ -356,7 +358,7 @@ export default function DashboardPage() {
                       </Badge>
                     </div>
                     <p className="text-xs text-text-secondary truncate">
-                      {r.contact_name}{r.company_name ? ` (${r.company_name})` : ''}
+                      {r.contact?.full_name ?? r.contact_name}{(r.contact?.company_name ?? r.company_name) ? ` (${r.contact?.company_name ?? r.company_name})` : ''}
                     </p>
                     <p className="text-xs text-text truncate mt-0.5">{r.next_action ?? '-'}</p>
                   </Link>
@@ -400,7 +402,7 @@ export default function DashboardPage() {
                             </Link>
                           </TableCell>
                           <TableCell>
-                            {r.contact_name}{r.company_name ? ` (${r.company_name})` : ''}
+                            {r.contact?.full_name ?? r.contact_name}{(r.contact?.company_name ?? r.company_name) ? ` (${r.contact?.company_name ?? r.company_name})` : ''}
                           </TableCell>
                           <TableCell>
                             <span className="truncate max-w-[200px] inline-block">{r.next_action ?? '-'}</span>
@@ -459,7 +461,7 @@ export default function DashboardPage() {
                     </span>
                     {m.tool && <Badge variant="info">{TOOL_LABEL[m.tool] ?? m.tool}</Badge>}
                   </div>
-                  <p className="text-sm text-text">{m.contact_name ?? '未紐付け'}</p>
+                  <p className="text-sm text-text">{m.contact?.full_name ?? m.contact_name ?? '未紐付け'}</p>
                 </Link>
               ))}
             </div>
@@ -481,7 +483,7 @@ export default function DashboardPage() {
                             {new Date(m.meeting_date).toLocaleDateString('ja-JP')}
                           </Link>
                         </TableCell>
-                        <TableCell>{m.contact_name ?? '未紐付け'}</TableCell>
+                        <TableCell>{m.contact?.full_name ?? m.contact_name ?? '未紐付け'}</TableCell>
                         <TableCell>
                           {m.tool ? <Badge variant="info">{TOOL_LABEL[m.tool] ?? m.tool}</Badge> : '-'}
                         </TableCell>

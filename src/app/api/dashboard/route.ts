@@ -157,10 +157,10 @@ export async function GET(
       revenue: phaseRevenueMap[phase] ?? 0,
     }));
 
-    // --- 3. 直近5件の会議 ---
+    // --- 3. 直近5件の会議（コンタクト情報をJOIN） ---
     const { data: meetingsData, error: meetingsError } = await supabase
       .from('meetings')
-      .select('*')
+      .select('*, contact:contacts(id, full_name, company_name)')
       .order('meeting_date', { ascending: false })
       .limit(5);
 
@@ -168,7 +168,7 @@ export async function GET(
       console.error('直近会議の取得に失敗しました:', meetingsError.message);
     }
 
-    const recentMeetings = (meetingsData ?? []) as MeetingRow[];
+    const recentMeetings = (meetingsData ?? []) as unknown as MeetingRow[];
 
     // --- 4. 未対応問い合わせ件数 ---
     let inquiryCountQuery = supabase

@@ -55,6 +55,11 @@ export async function GET(
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE));
     const offset = (page - 1) * limit;
 
+    // 総件数取得用のカウントクエリ
+    let countQuery = supabase
+      .from('deals')
+      .select('*', { count: 'exact', head: true });
+
     let query = supabase
       .from('deals')
       .select('*, contact:contacts(*)')
@@ -62,13 +67,16 @@ export async function GET(
 
     // 検索: title, deliverable, client_contact_name を部分一致検索
     if (search) {
-      query = query.or(`title.ilike.%${search}%,deliverable.ilike.%${search}%,client_contact_name.ilike.%${search}%`);
+      const searchFilter = `title.ilike.%${search}%,deliverable.ilike.%${search}%,client_contact_name.ilike.%${search}%`;
+      query = query.or(searchFilter);
+      countQuery = countQuery.or(searchFilter);
     }
 
     if (phase) {
       const validPhases = ['proposal_planned', 'proposal_active', 'waiting', 'follow_up', 'active'];
       if (validPhases.includes(phase)) {
         query = query.eq('phase', phase);
+        countQuery = countQuery.eq('phase', phase);
       }
     }
 
@@ -83,6 +91,7 @@ export async function GET(
 
     if (assignedTo) {
       query = query.eq('assigned_to', assignedTo);
+      countQuery = countQuery.eq('assigned_to', assignedTo);
     }
 
     // contact_id フィルタ
@@ -95,11 +104,13 @@ export async function GET(
         );
       }
       query = query.eq('contact_id', contactId);
+      countQuery = countQuery.eq('contact_id', contactId);
     }
 
     // memberロールは自分の担当のみ閲覧可能
     if (auth.role === 'member') {
       query = query.eq('assigned_to', auth.userId);
+      countQuery = countQuery.eq('assigned_to', auth.userId);
     }
 
     query = query.range(offset, offset + limit - 1);
@@ -143,7 +154,9 @@ export async function GET(
       };
     });
 
-    return NextResponse.json({ data: deals, error: null });
+    const { count: totalCount } = await countQuery;
+
+    return NextResponse.json({ data: deals, total: totalCount ?? deals.length, error: null });
   } catch (err) {
     console.error('案件一覧の取得中にエラーが発生しました:', err instanceof Error ? err.message : err);
     return NextResponse.json(
