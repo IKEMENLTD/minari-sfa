@@ -98,3 +98,38 @@ export async function PATCH(request: NextRequest): Promise<NextResponse<ApiResul
     return NextResponse.json({ data: null, error: '設定の保存中にエラーが発生しました' }, { status: 500 });
   }
 }
+
+// DELETE /api/settings
+export async function DELETE(request: NextRequest): Promise<NextResponse<ApiResult<{ success: boolean }>>> {
+  const auth = await validateAuth(request);
+  if (isAuthError(auth)) return auth as NextResponse<ApiResult<{ success: boolean }>>;
+  const roleError = requireRole(auth, ['admin']);
+  if (roleError) return roleError as NextResponse<ApiResult<{ success: boolean }>>;
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const key = searchParams.get('key');
+    if (!key) {
+      return NextResponse.json({ data: null, error: 'キーが指定されていません' }, { status: 400 });
+    }
+
+    const supabase = createServerSupabaseClient();
+    const { error } = await supabase
+      .from('app_settings')
+      .delete()
+      .eq('key', key);
+
+    if (error) {
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return NextResponse.json({ data: null, error: 'app_settingsテーブルが未作成です' }, { status: 500 });
+      }
+      console.error('設定の削除に失敗しました:', error.message);
+      return NextResponse.json({ data: null, error: '設定の削除に失敗しました' }, { status: 500 });
+    }
+
+    return NextResponse.json({ data: { success: true }, error: null });
+  } catch (err) {
+    console.error('設定の削除中にエラー:', err instanceof Error ? err.message : err);
+    return NextResponse.json({ data: null, error: '設定の削除中にエラーが発生しました' }, { status: 500 });
+  }
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Eye, EyeOff, Save, AlertCircle, CheckCircle2, Wrench, HelpCircle, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Settings, Eye, EyeOff, Save, AlertCircle, CheckCircle2, Wrench, HelpCircle, ChevronDown, ChevronUp, ExternalLink, Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -151,6 +151,7 @@ export default function SettingsPage() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [deleting, setDeleting] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<Record<string, { type: 'success' | 'error'; message: string }>>({});
   const [loading, setLoading] = useState(true);
   const [dbWarning, setDbWarning] = useState<string | null>(null);
@@ -218,6 +219,27 @@ export default function SettingsPage() {
       setFeedback((prev) => ({ ...prev, [key]: { type: 'error', message: '保存に失敗しました' } }));
     } finally {
       setSaving((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleDelete = async (key: string) => {
+    if (!confirm('このAPIキーを削除してもよろしいですか？')) return;
+    setDeleting((prev) => ({ ...prev, [key]: true }));
+    setFeedback((prev) => { const next = { ...prev }; delete next[key]; return next; });
+    try {
+      const res = await fetch(`/api/settings?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.error) {
+        setFeedback((prev) => ({ ...prev, [key]: { type: 'error', message: json.error } }));
+      } else {
+        setFeedback((prev) => ({ ...prev, [key]: { type: 'success', message: '削除しました' } }));
+        setValues((prev) => { const next = { ...prev }; delete next[key]; return next; });
+        await fetchSettings();
+      }
+    } catch {
+      setFeedback((prev) => ({ ...prev, [key]: { type: 'error', message: '削除に失敗しました' } }));
+    } finally {
+      setDeleting((prev) => ({ ...prev, [key]: false }));
     }
   };
 
@@ -350,6 +372,17 @@ ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;`}</pre>
                         <Save className="h-4 w-4" />
                         保存
                       </Button>
+                      {existing && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          loading={deleting[field.key] ?? false}
+                          onClick={() => handleDelete(field.key)}
+                          className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                     {existing && (
                       <p className="text-xs text-text-secondary">
