@@ -9,7 +9,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
   const isLoginPage = pathname === '/login';
 
   if (isLoginPage) {
-    return <main className="min-h-screen flex items-center justify-center">{children}</main>;
+    return <main className="min-h-screen w-full flex items-center justify-center bg-bg">{children}</main>;
   }
 
   return (

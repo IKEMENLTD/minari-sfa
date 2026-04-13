@@ -43,7 +43,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg px-4">
+    <div className="w-full max-w-sm px-4">
       <div className="w-full max-w-sm border border-border bg-surface p-5 sm:p-8">
         <div className="mb-8 flex justify-center">
           <Logo size={32} />
