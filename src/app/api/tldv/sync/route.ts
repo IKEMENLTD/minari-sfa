@@ -141,6 +141,28 @@ export async function POST(
           } else {
             // 文字起こし保存成功 → 要約対象に追加
             meetingIdsToSummarize.push(meeting.id as string);
+
+            // 議事録のspeakerを参加者リストにマージ
+            const speakerSet = new Set<string>();
+            for (const line of transcript.text.split('\n')) {
+              const match = line.match(/^([^:]+):/);
+              if (match?.[1]?.trim()) speakerSet.add(match[1].trim());
+            }
+            if (speakerSet.size > 0) {
+              const existingNames = (meeting.participants as string[]) ?? [];
+              const existingNormalized = existingNames.map(n => n.replace(/[\s/／]/g, ''));
+              const newNames = [...existingNames];
+              for (const speaker of speakerSet) {
+                const speakerNorm = speaker.replace(/[\s/／]/g, '');
+                if (!existingNormalized.some(e => e.includes(speakerNorm) || speakerNorm.includes(e))) {
+                  newNames.push(speaker);
+                }
+              }
+              if (newNames.length > existingNames.length) {
+                await supabase.from('meetings').update({ participants: newNames }).eq('id', meeting.id);
+                (meeting as Record<string, unknown>).participants = newNames;
+              }
+            }
           }
         } catch (transcriptErr) {
           errors.push(`会議 ${tldvMeeting.id} の文字起こし取得に失敗: ${transcriptErr instanceof Error ? transcriptErr.message : '不明なエラー'}`);

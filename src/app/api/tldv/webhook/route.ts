@@ -207,6 +207,27 @@ export async function POST(
       if (transcriptError) {
         console.error('Webhook: 文字起こしの保存に失敗しました:', transcriptError.message);
       } else {
+        // 議事録のspeakerを参加者リストにマージ
+        const speakerSet = new Set<string>();
+        for (const line of transcript.text.split('\n')) {
+          const match = line.match(/^([^:]+):/);
+          if (match?.[1]?.trim()) speakerSet.add(match[1].trim());
+        }
+        if (speakerSet.size > 0) {
+          const existingNames = (meeting.participants as string[]) ?? [];
+          const existingNormalized = existingNames.map(n => n.replace(/[\s/／]/g, ''));
+          const newNames = [...existingNames];
+          for (const speaker of speakerSet) {
+            const speakerNorm = speaker.replace(/[\s/／]/g, '');
+            if (!existingNormalized.some(e => e.includes(speakerNorm) || speakerNorm.includes(e))) {
+              newNames.push(speaker);
+            }
+          }
+          if (newNames.length > existingNames.length) {
+            await supabase.from('meetings').update({ participants: newNames }).eq('id', meeting.id);
+          }
+        }
+
         // 文字起こし保存成功 → Background Functionで要約を非同期生成
         await invokeSummarizeBackground(meeting.id as string);
       }
