@@ -7,6 +7,31 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { parseParticipantName, namesMatch } from '@/lib/participant-parser';
 
 /**
+ * ilike LIKE パターンの特殊文字エスケープ(`%`, `_`, `\`)。
+ * 参加者名が `%` 等を含んでも検索が暴れない。
+ */
+export function escapeIlike(s: string): string {
+  return s.replace(/[\\%_]/g, (m) => '\\' + m);
+}
+
+/**
+ * 会社名正規化:
+ * - 株式会社接頭辞バリエーション統一: "株式会社"/"(株)"/"㈱"/"Inc."/"Ltd."/"Co.,Ltd." を除去
+ * - 半角/全角スペース除去
+ * - 小文字化
+ *
+ * 完全一致比較(`===`)用に使う。includes による誤紐付けを避けるため。
+ */
+export function normalizeCompanyName(s: string): string {
+  return s
+    .replace(/株式会社|（株）|\(株\)|㈱|有限会社|（有）|\(有\)|㈲/gi, '')
+    // `\b...\b\.?` 構造で末尾ドットも確実に消費(Inc. → '' ではなく取り切る)
+    .replace(/\b(inc|ltd|llc|corp|co\.?,?\s*ltd)\b\.?/gi, '')
+    .replace(/[\s　]+/g, '')
+    .toLowerCase();
+}
+
+/**
  * auto-link結果の詳細(UIでskip理由を可視化するため)。
  */
 export type AutoLinkResult =
@@ -40,9 +65,6 @@ export async function autoLinkContactToMeetingDetailed(
     let companyMismatch = false;
     let ambiguousNoCompany = false;
 
-    // ilike の特殊文字(% _ \)エスケープ - injection / pattern暴走防止
-    const escapeIlike = (s: string) => s.replace(/[\\%_]/g, (m) => '\\' + m);
-
     // 各参加者名で完全一致チェック(安全性優先)
     for (const participant of parsed) {
       const { data: contacts } = await supabase
@@ -65,22 +87,14 @@ export async function autoLinkContactToMeetingDetailed(
       //    a. 名前一致が1件のみ → 紐付け
       //    b. 複数 → 曖昧なので紐付けせずスキップ(ユーザーが手動選択)
       if (participant.company_name) {
-        // 会社名正規化:
-        //   - 半角/全角スペース除去
-        //   - 株式会社接頭辞バリエーション統一: "株式会社"/"(株)"/"㈱"/"Inc."/"Ltd."/"Co.,Ltd." を除去
-        //   - 小文字化
-        const normalize = (s: string) => s
-          .replace(/株式会社|（株）|\(株\)|㈱|有限会社|（有）|\(有\)|㈲/gi, '')
-          .replace(/\b(inc\.?|ltd\.?|llc\.?|corp\.?|co\.?,?\s*ltd\.?)\b/gi, '')
-          .replace(/[\s　]+/g, '')
-          .toLowerCase();
-        const partCo = normalize(participant.company_name);
+        // 会社名正規化 (exported normalizeCompanyName を使用、テスト容易性のため)
+        const partCo = normalizeCompanyName(participant.company_name);
         if (partCo.length === 0) {
           console.log(`[auto-link] 会議 ${meetingId}: 会社名正規化後が空`);
           continue;
         }
         const companyMatch = nameMatches.find(
-          (c) => c.company_name && normalize(c.company_name) === partCo
+          (c) => c.company_name && normalizeCompanyName(c.company_name) === partCo
         );
         if (companyMatch) {
           await supabase

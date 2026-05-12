@@ -33,8 +33,9 @@ export const ENV_ONLY_KEYS: readonly string[] = [
  *     `api_version`       → 末尾_keyではない → 通過 (機密でない)
  */
 const SECRET_LIKE_PATTERNS: readonly RegExp[] = [
-  // 末尾 _key / _secret / _token / _password / _passphrase / _credential(s)
-  /_(api_key|secret_key|access_key|signing_key|webhook_key|api_secret|webhook_secret|oauth_secret|client_secret|access_token|refresh_token|bearer_token|api_token|webhook_token|password|passphrase|private_key|credential|credentials)$/i,
+  // 文字列全体 or `_` 接頭辞 で機密接尾辞ワードに一致
+  //   "_api_key" にも "access_token" 単独にも対応
+  /(?:^|_)(api_key|secret_key|access_key|signing_key|webhook_key|api_secret|webhook_secret|oauth_secret|client_secret|access_token|refresh_token|bearer_token|api_token|webhook_token|password|passphrase|private_key|credential|credentials)$/i,
 ];
 
 /**
