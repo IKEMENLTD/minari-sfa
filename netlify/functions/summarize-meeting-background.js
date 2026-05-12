@@ -237,33 +237,14 @@ exports.handler = async function (event, context) {
       return { statusCode: 401, body: "Unauthorized" };
     }
 
-    // 環境変数チェック
+    // 環境変数チェック(env-only — DB app_settings フォールバックは廃止)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    let claudeApiKey = process.env.CLAUDE_API_KEY;
+    const claudeApiKey = process.env.CLAUDE_API_KEY;
 
     if (!supabaseUrl || !supabaseKey) {
       console.error("Supabase 環境変数が設定されていません");
       return { statusCode: 500, body: "Supabase環境変数が未設定です" };
-    }
-
-    // 環境変数に CLAUDE_API_KEY がない場合、app_settings から取得
-    if (!claudeApiKey) {
-      try {
-        const tmpSupabase = createClient(supabaseUrl, supabaseKey, {
-          auth: { autoRefreshToken: false, persistSession: false },
-        });
-        const { data: settingData } = await tmpSupabase
-          .from("app_settings")
-          .select("value")
-          .eq("key", "claude_api_key")
-          .single();
-        if (settingData && settingData.value) {
-          claudeApiKey = settingData.value;
-        }
-      } catch (err) {
-        console.warn("app_settings からの Claude API キー取得に失敗:", err);
-      }
     }
 
     if (!claudeApiKey) {

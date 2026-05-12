@@ -1,17 +1,56 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Logo } from '@/components/layout/logo';
+import { FOCUS_RING_CLASS } from '@/lib/ui-constants';
+
+interface LoginUser {
+  id: string;
+  name: string;
+}
 
 export default function LoginPage() {
   const router = useRouter();
+  const [users, setUsers] = useState<LoginUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [usersError, setUsersError] = useState('');
+  const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const fetchUsers = async () => {
+    setUsersLoading(true);
+    setUsersError('');
+    try {
+      const res = await fetch('/api/auth/users');
+      if (!res.ok) {
+        throw new Error('ユーザー一覧の取得に失敗しました');
+      }
+      const json: { data: LoginUser[] | null; error?: string | null } = await res.json();
+      if (!json.data || json.data.length === 0) {
+        setUsersError('ユーザーが登録されていません。管理者に連絡してください。');
+      } else {
+        setUsers(json.data);
+      }
+    } catch (err) {
+      setUsersError(err instanceof Error ? err.message : 'ユーザー一覧の取得に失敗しました');
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!userId) {
+      setError('ユーザーを選択してください');
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -21,7 +60,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ user_id: userId, password }),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -30,7 +69,8 @@ export default function LoginPage() {
         router.push('/');
         router.refresh();
       } else {
-        setError('パスワードが正しくありません');
+        const json = await res.json().catch(() => ({}));
+        setError(json.error ?? 'ログインに失敗しました');
       }
     } catch (err) {
       const msg = err instanceof Error && err.name === 'AbortError'
@@ -51,16 +91,49 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium uppercase tracking-widest text-text-secondary">
+              ユーザー
+            </label>
+            {usersLoading ? (
+              <div className="h-9 border border-border bg-bg px-3 py-2 text-sm text-text-secondary animate-pulse">
+                読み込み中...
+              </div>
+            ) : usersError ? (
+              <div className="flex flex-col gap-2 py-2">
+                <p className="text-xs text-red-400 border border-red-400/40 bg-red-400/10 px-3 py-2">{usersError}</p>
+                <button
+                  type="button"
+                  onClick={fetchUsers}
+                  className={`self-start inline-flex items-center min-h-[44px] px-3 py-2 text-sm text-accent underline hover:text-accent-hover ${FOCUS_RING_CLASS}`}
+                >
+                  再試行
+                </button>
+              </div>
+            ) : (
+              <select
+                autoFocus
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                required
+                className={`border border-border bg-bg px-3 py-2 text-sm text-text ${FOCUS_RING_CLASS}`}
+              >
+                <option value="">選択してください</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium uppercase tracking-widest text-text-secondary">
               パスワード
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoFocus
               required
               autoComplete="current-password"
-              className="border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-accent"
+              className={`border border-border bg-bg px-3 py-2 text-sm text-text ${FOCUS_RING_CLASS}`}
             />
           </div>
           {error && (
@@ -68,7 +141,7 @@ export default function LoginPage() {
           )}
           <button
             type="submit"
-            disabled={loading || !password.trim()}
+            disabled={loading || !password.trim() || !userId || usersLoading || !!usersError}
             className="bg-accent px-4 py-2.5 text-sm font-medium text-white min-h-[44px] hover:bg-accent-hover disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
             {loading && (

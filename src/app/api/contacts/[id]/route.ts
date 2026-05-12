@@ -206,10 +206,22 @@ export async function DELETE(
 
     const { count: dealCount } = await supabase.from('deals').select('*', { count: 'exact', head: true }).eq('contact_id', id);
     const { count: meetingCount } = await supabase.from('meetings').select('*', { count: 'exact', head: true }).eq('contact_id', id);
+    const { count: inquiryCount } = await supabase.from('inquiries').select('*', { count: 'exact', head: true }).eq('contact_id', id);
 
-    if ((dealCount ?? 0) > 0 || (meetingCount ?? 0) > 0) {
+    const dc = dealCount ?? 0;
+    const mc = meetingCount ?? 0;
+    const ic = inquiryCount ?? 0;
+    if (dc > 0 || mc > 0 || ic > 0) {
+      const parts: string[] = [];
+      if (dc > 0) parts.push(`案件 ${dc}件`);
+      if (mc > 0) parts.push(`会議 ${mc}件`);
+      if (ic > 0) parts.push(`問い合わせ ${ic}件`);
       return NextResponse.json(
-        { data: null, error: '関連する案件または会議が存在するため削除できません。先に関連データの紐付けを解除してください。' },
+        {
+          data: null,
+          error: `関連データ(${parts.join('、')})が存在するため削除できません。先に紐付けを解除するか、関連レコードを削除してください。`,
+          meta: { deal_count: dc, meeting_count: mc, inquiry_count: ic },
+        } as ApiResult<null> & { meta: { deal_count: number; meeting_count: number; inquiry_count: number } },
         { status: 409 }
       );
     }

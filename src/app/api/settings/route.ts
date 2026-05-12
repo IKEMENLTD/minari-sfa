@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, validateContentType, isAuthError, requireRole } from '@/lib/auth';
+import { isEnvOnlyKey } from '@/lib/config/secrets';
 import type { ApiResult } from '@/types';
 
 interface SettingItem {
@@ -69,6 +70,14 @@ export async function PATCH(request: NextRequest): Promise<NextResponse<ApiResul
     const parsed = updateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ data: null, error: '入力値が不正です' }, { status: 400 });
+    }
+
+    // セキュリティ: 機密系キーは DB 保存禁止(env-only)
+    if (isEnvOnlyKey(parsed.data.key)) {
+      return NextResponse.json(
+        { data: null, error: 'このキーは Netlify の環境変数でのみ設定可能です(DB保存は廃止されました)。' },
+        { status: 400 }
+      );
     }
 
     // For keys ending with '_key' or '_secret', validate non-empty

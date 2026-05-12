@@ -4,7 +4,6 @@ import {
   MEETING_SUMMARY_PROMPT,
   meetingSummarySchema,
 } from '@/lib/prompts/meeting-summary';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import type { MeetingSummaryResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -29,28 +28,17 @@ interface ClaudeOptions {
 }
 
 /**
- * Claude API キーを取得する。
- * 1. 環境変数 CLAUDE_API_KEY を優先
- * 2. 未設定の場合は app_settings テーブルから読み取り
+ * Claude API キーを取得する(環境変数のみ)。
+ * セキュリティ: DBの app_settings からの読み込みは廃止
+ *   (service_role 経由で全認証ユーザーがアクセス可能なため平文保存はリスク)。
+ * デプロイ時は Netlify 環境変数に CLAUDE_API_KEY を設定すること。
  */
-async function getClaudeApiKey(): Promise<string> {
+function getClaudeApiKey(): string {
   const envKey = process.env.CLAUDE_API_KEY;
-  if (envKey) return envKey;
-
-  try {
-    const supabase = createServerSupabaseClient();
-    const { data } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'claude_api_key')
-      .single();
-
-    if (data?.value) return data.value as string;
-  } catch (err) {
-    console.warn('app_settings からの Claude API キー取得に失敗:', err instanceof Error ? err.message : err);
+  if (!envKey) {
+    throw new Error('環境変数 CLAUDE_API_KEY が設定されていません。Netlify の Environment Variables で設定してください。');
   }
-
-  throw new Error('Claude API キーが設定されていません。環境変数または設定画面で設定してください。');
+  return envKey;
 }
 
 /**
@@ -62,7 +50,7 @@ async function callClaude(
   signal: AbortSignal,
   options?: ClaudeOptions
 ): Promise<string> {
-  const apiKey = await getClaudeApiKey();
+  const apiKey = getClaudeApiKey();
 
   const response = await fetch(CLAUDE_API_URL, {
     method: 'POST',

@@ -26,6 +26,7 @@ import {
   PROBABILITY_LABEL,
   PROBABILITY_COLOR,
 } from '@/lib/constants';
+import { TOAST_TIMEOUT } from '@/lib/ui-constants';
 import { formatDateShort } from '@/lib/format';
 import type {
   ContactRow,
@@ -181,17 +182,17 @@ export default function ContactDetailPage() {
       if (!res.ok || json.error) {
         const msg = json.error ?? '保存に失敗しました';
         setSaveMsg(msg);
-        setTimeout(() => setSaveMsg(null), 3000);
+        setTimeout(() => setSaveMsg(null), TOAST_TIMEOUT.error);
       } else {
         setIsDirty(false);
         setSaveMsg('保存しました');
-        setTimeout(() => setSaveMsg(null), 3000);
+        setTimeout(() => setSaveMsg(null), TOAST_TIMEOUT.success);
         fetchContact();
       }
     } catch (e) {
       console.error('コンタクトの保存に失敗しました:', e);
       setSaveMsg('保存に失敗しました');
-      setTimeout(() => setSaveMsg(null), 3000);
+      setTimeout(() => setSaveMsg(null), TOAST_TIMEOUT.error);
     } finally {
       setSaving(false);
     }
@@ -337,7 +338,7 @@ export default function ContactDetailPage() {
                   value={note}
                   onChange={(e) => { setNote(e.target.value); setIsDirty(true); }}
                   rows={4}
-                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-y"
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary transition-colors resize-y focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
                 />
               </div>
 
@@ -349,7 +350,18 @@ export default function ContactDetailPage() {
                 <Button
                   variant="secondary"
                   onClick={async () => {
-                    if (!confirm('このコンタクトを削除してもよろしいですか？関連する案件や会議がある場合は削除できません。')) return;
+                    const dealsCount = deals.length;
+                    const meetingsCount = meetingsTotal;
+                    const hasRelations = dealsCount > 0 || meetingsCount > 0;
+                    const msg = hasRelations
+                      ? `「${contact.full_name}」は関連データ(案件${dealsCount}件・会議${meetingsCount}件)があるため削除できません。\n先に紐付けを解除してください。`
+                      : `「${contact.full_name}」を削除しますか?`;
+                    if (hasRelations) {
+                      setSaveMsg(msg);
+                      setTimeout(() => setSaveMsg(null), TOAST_TIMEOUT.warning);
+                      return;
+                    }
+                    if (!confirm(msg)) return;
                     setDeleting(true);
                     try {
                       const res = await fetch(`/api/contacts/${id}`, { method: 'DELETE' });
@@ -357,12 +369,13 @@ export default function ContactDetailPage() {
                         router.push('/contacts');
                       } else {
                         const json = await res.json();
-                        setSaveMsg(json.error ?? '削除に失敗しました');
-                        setTimeout(() => setSaveMsg(null), 5000);
+                        const errMsg = json.error ?? '削除に失敗しました';
+                        setSaveMsg(errMsg);
+                        setTimeout(() => setSaveMsg(null), TOAST_TIMEOUT.warning);
                       }
                     } catch {
                       setSaveMsg('削除に失敗しました');
-                      setTimeout(() => setSaveMsg(null), 5000);
+                      setTimeout(() => setSaveMsg(null), TOAST_TIMEOUT.error);
                     } finally {
                       setDeleting(false);
                     }
@@ -374,12 +387,16 @@ export default function ContactDetailPage() {
                   <Trash2 className="h-4 w-4" />
                   削除
                 </Button>
-                {saveMsg && (
-                  <span className={`text-sm ${saveMsg === '保存しました' ? 'text-green-500' : 'text-red-400'}`}>
-                    {saveMsg}
-                  </span>
-                )}
               </div>
+              {saveMsg && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className={`mt-3 block text-sm whitespace-pre-line break-words rounded-md px-3 py-2 ${saveMsg === '保存しました' ? 'bg-green-500/10 text-green-500 border border-green-500/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}
+                >
+                  {saveMsg}
+                </div>
+              )}
             </CardContent>
           </Card>
 
