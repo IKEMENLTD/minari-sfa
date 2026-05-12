@@ -71,12 +71,19 @@ Site settings → **Environment variables** で以下を設定:
 | `TLDV_API_KEY` | TLDV API key | TLDVダッシュボード |
 | `TLDV_WEBHOOK_SECRET` | TLDV Webhook 署名検証用 | TLDVと同値を設定 |
 | `BACKGROUND_FUNCTION_SECRET` | Background Function 認証 | 32バイト ランダム16進 |
+| `SETTINGS_ENCRYPTION_KEY` | UI設定画面で入力する API key の暗号化master(PhaseB) | 32バイト ランダム16進 |
 | `NODE_ENV` | 環境 | `production` |
 
 ### 重要: `AUTH_HMAC_SECRET` 分離の意義
 - 未設定なら `SITE_PASSWORD` が fallback として使われる(後方互換)
 - 設定すると **パスワード変更時に全員ログアウトの DoS を回避** できる
 - 推奨: 別変数で管理し、ローテーションは別タイミングで実施
+
+### 重要: `SETTINGS_ENCRYPTION_KEY` (PhaseB)
+- **これを設定すれば**、Claude API key と TLDV API key は `/settings` UI から入力可能になる
+- DB には AES-256-GCM 暗号化された値で保存される(平文では保存されない)
+- env `CLAUDE_API_KEY` を併用すれば env が優先(ホットフィックス用)
+- ⚠️ master key 変更は注意: 暗号化済み値を事前に UI から再保存してから差し替える必要
 
 ### TLDV Webhook 設定
 TLDV ダッシュボードで以下を設定:

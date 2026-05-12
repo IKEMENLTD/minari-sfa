@@ -4,6 +4,8 @@ import {
   MEETING_SUMMARY_PROMPT,
   meetingSummarySchema,
 } from '@/lib/prompts/meeting-summary';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { decryptSetting, isEncryptedValue } from '@/lib/crypto/settings-cipher';
 import type { MeetingSummaryResult } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -28,17 +30,39 @@ interface ClaudeOptions {
 }
 
 /**
- * Claude API キーを取得する(環境変数のみ)。
- * セキュリティ: DBの app_settings からの読み込みは廃止
- *   (service_role 経由で全認証ユーザーがアクセス可能なため平文保存はリスク)。
- * デプロイ時は Netlify 環境変数に CLAUDE_API_KEY を設定すること。
+ * Claude API キーを取得する。
+ *   1. env `CLAUDE_API_KEY` を優先
+ *   2. 無ければ app_settings から `claude_api_key` を取得(AES-256-GCM 復号)
+ *   3. それも無ければエラー
+ *
+ * PhaseB で UI設定対応: admin が /settings から平文入力 → 暗号化保存 →
+ * env 設定不要で運用可能。env を併用すれば env が優先(ホットフィックス用)。
  */
-function getClaudeApiKey(): string {
+async function getClaudeApiKey(): Promise<string> {
   const envKey = process.env.CLAUDE_API_KEY;
-  if (!envKey) {
-    throw new Error('環境変数 CLAUDE_API_KEY が設定されていません。Netlify の Environment Variables で設定してください。');
+  if (envKey) return envKey;
+
+  try {
+    const supabase = createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'claude_api_key')
+      .single();
+    if (error || !data?.value) {
+      throw new Error('app_settings に claude_api_key が登録されていません');
+    }
+    const raw = data.value as string;
+    if (isEncryptedValue(raw)) {
+      return decryptSetting(raw);
+    }
+    // レガシー平文値も互換維持(警告)
+    console.warn('[claude] claude_api_key が平文で保存されています。/settings から再保存して暗号化してください。');
+    return raw;
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Claude API キーが取得できません(env CLAUDE_API_KEY 未設定 + app_settings: ${detail})`);
   }
-  return envKey;
 }
 
 /**
@@ -50,7 +74,7 @@ async function callClaude(
   signal: AbortSignal,
   options?: ClaudeOptions
 ): Promise<string> {
-  const apiKey = getClaudeApiKey();
+  const apiKey = await getClaudeApiKey();
 
   const response = await fetch(CLAUDE_API_URL, {
     method: 'POST',

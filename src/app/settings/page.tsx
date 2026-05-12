@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Eye, EyeOff, Save, AlertCircle, CheckCircle2, Wrench, HelpCircle, ChevronDown, ChevronUp, ExternalLink, Trash2 } from 'lucide-react';
+import { Settings, Eye, EyeOff, Save, AlertCircle, CheckCircle2, Wrench, HelpCircle, ChevronDown, ChevronUp, ExternalLink, Trash2, Lock, ShieldAlert } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -9,6 +9,8 @@ interface SettingItem {
   key: string;
   value: string;
   updated_at: string;
+  is_secret?: boolean;
+  is_encrypted?: boolean;
 }
 
 interface SettingField {
@@ -389,9 +391,18 @@ ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;`}</pre>
                       )}
                     </div>
                     {existing && (
-                      <p className="text-xs text-text-secondary">
-                        最終更新: {new Date(existing.updated_at).toLocaleString('ja-JP')}
-                      </p>
+                      <div className="flex items-center flex-wrap gap-2 text-xs text-text-secondary">
+                        <span>最終更新: {new Date(existing.updated_at).toLocaleString('ja-JP')}</span>
+                        {existing.is_encrypted ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 border border-green-500/30">
+                            <Lock className="h-3 w-3" /> 暗号化保存中
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-600 border border-yellow-500/30">
+                            <ShieldAlert className="h-3 w-3" /> 平文保存 - 再保存で暗号化されます
+                          </span>
+                        )}
+                      </div>
                     )}
                     {fb && (
                       <div

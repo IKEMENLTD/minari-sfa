@@ -11,14 +11,21 @@
  * - service_role 経由で全認証ユーザーが読み取り可能なため平文保存はリスク
  * - 漏洩時の影響範囲が外部API(Anthropic, TLDV)に及ぶ
  */
+// =============================================================================
+// env-only キー: DB 保存(暗号化含む)も禁止する最高機密。
+//   - これらは Netlify 環境変数でのみ管理
+//   - 漏洩時の影響範囲が広大で、ローテーション頻度が低い
+//
+// 注意: claude_api_key / tldv_api_key / tldv_webhook_secret は
+//       PhaseB で「暗号化 DB 保存」に移行したため env-only リストから外した。
+//       UI から設定可能。詳細は `src/lib/crypto/settings-cipher.ts` の ENCRYPTABLE_KEYS。
+// =============================================================================
 export const ENV_ONLY_KEYS: readonly string[] = [
-  'claude_api_key',
-  'tldv_api_key',
-  'tldv_webhook_secret',
   'supabase_service_role_key',
   'site_password',
   'auth_hmac_secret',
   'background_function_secret',
+  'settings_encryption_key', // master key 自体は env のみ(自己参照防止)
 ] as const;
 
 /**

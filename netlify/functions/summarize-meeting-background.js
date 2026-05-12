@@ -9,6 +9,31 @@
 // ---------------------------------------------------------------------------
 
 const { createClient } = require("@supabase/supabase-js");
+const { createDecipheriv } = require("crypto");
+
+// =============================================================================
+// app_settings の暗号化値を復号する(src/lib/crypto/settings-cipher.ts と同期)
+// 自己完結型のため import せず inline 実装。
+// 変更時は両者同時更新。
+// =============================================================================
+function decryptSettingsValue(encoded) {
+  if (!encoded.startsWith("v1:")) {
+    throw new Error("暗号化フォーマットが不正です(期待: v1:...)");
+  }
+  const hex = process.env.SETTINGS_ENCRYPTION_KEY;
+  if (!hex || hex.length !== 64 || !/^[0-9a-f]+$/i.test(hex)) {
+    throw new Error("SETTINGS_ENCRYPTION_KEY が未設定または不正形式");
+  }
+  const key = Buffer.from(hex, "hex");
+  const parts = encoded.slice(3).split("|");
+  if (parts.length !== 3) throw new Error("暗号化フォーマット parts mismatch");
+  const iv = Buffer.from(parts[0], "base64");
+  const authTag = Buffer.from(parts[1], "base64");
+  const ciphertext = Buffer.from(parts[2], "base64");
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+}
 
 // ---------------------------------------------------------------------------
 // 定数（src/lib/prompts/meeting-summary.ts からインライン）
@@ -258,18 +283,44 @@ exports.handler = async function (event, context) {
       return { statusCode: 401, body: "Unauthorized" };
     }
 
-    // 環境変数チェック(env-only — DB app_settings フォールバックは廃止)
+    // 環境変数チェック + app_settings(暗号化) フォールバック
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const claudeApiKey = process.env.CLAUDE_API_KEY;
+    let claudeApiKey = process.env.CLAUDE_API_KEY;
 
     if (!supabaseUrl || !supabaseKey) {
       console.error("Supabase 環境変数が設定されていません");
       return { statusCode: 500, body: "Supabase環境変数が未設定です" };
     }
 
+    // env が無ければ app_settings から復号取得
     if (!claudeApiKey) {
-      console.error("CLAUDE_API_KEY が設定されていません");
+      try {
+        const tmpSupabase = createClient(supabaseUrl, supabaseKey, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+        const { data: settingData } = await tmpSupabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", "claude_api_key")
+          .single();
+        if (settingData && settingData.value) {
+          const raw = settingData.value;
+          if (typeof raw === "string" && raw.startsWith("v1:")) {
+            claudeApiKey = decryptSettingsValue(raw);
+          } else {
+            // レガシー平文(警告)
+            console.warn("[bg] claude_api_key が平文で保存されています");
+            claudeApiKey = raw;
+          }
+        }
+      } catch (err) {
+        console.warn("app_settings からの Claude API キー取得に失敗:", err && err.message ? err.message : err);
+      }
+    }
+
+    if (!claudeApiKey) {
+      console.error("CLAUDE_API_KEY が設定されていません(env も app_settings も無し)");
       return { statusCode: 500, body: "CLAUDE_API_KEY が未設定です" };
     }
 
