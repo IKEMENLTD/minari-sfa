@@ -112,10 +112,18 @@ function SearchModal() {
     }
   }, [isOpen]);
 
-  // 検索API呼び出し（デバウンス）
+  // 進行中検索の abort 用
+  const abortRef = useRef<AbortController | null>(null);
+
+  // 検索API呼び出し（デバウンス + 旧リクエストabort で stale response防止）
   const executeSearch = useCallback((searchQuery: string) => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
+    }
+
+    // 古い fetch があれば abort
+    if (abortRef.current) {
+      abortRef.current.abort();
     }
 
     if (searchQuery.trim().length === 0) {
@@ -129,10 +137,15 @@ function SearchModal() {
     setErrorMessage(null);
 
     debounceRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
         const encoded = encodeURIComponent(searchQuery.trim());
-        const res = await fetch(`/api/search?q=${encoded}`);
+        const res = await fetch(`/api/search?q=${encoded}`, { signal: controller.signal });
         const json: SearchApiResponse = await res.json();
+
+        // この応答がもう古い場合は破棄(別の検索が進行中)
+        if (controller.signal.aborted) return;
 
         if (json.error) {
           setErrorMessage(json.error);
@@ -141,11 +154,15 @@ function SearchModal() {
           setResults(json.data);
           setErrorMessage(null);
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         setErrorMessage('検索中にエラーが発生しました');
         setResults(null);
       } finally {
-        setIsLoading(false);
+        if (abortRef.current === controller) {
+          setIsLoading(false);
+          abortRef.current = null;
+        }
       }
     }, DEBOUNCE_MS);
   }, []);
@@ -155,6 +172,9 @@ function SearchModal() {
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
+      }
+      if (abortRef.current) {
+        abortRef.current.abort();
       }
     };
   }, []);

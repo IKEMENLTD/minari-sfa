@@ -104,13 +104,11 @@ export async function GET(
       dealQuery = dealQuery.eq('assigned_to', auth.userId);
     }
 
-    // --- 会議検索（contact名で検索） ---
+    // --- 会議検索（contact名で検索、N+1 を JOIN で解消） ---
     // NOTE: meetingsにはassigned_toがないため、memberロールも全件閲覧可能（既存API踏襲）
-    // participants配列の部分一致検索はPostgreSQLのcontainsでは困難なため、
-    // contact名での検索に切り替え、participants::textでのテキスト検索も併用
     const meetingQuery = supabase
       .from('meetings')
-      .select('id, meeting_date, source, contact_id')
+      .select('id, meeting_date, source, contact_id, contact:contacts(id, full_name)')
       .or(`participants::text.ilike.%${sanitized}%,source.ilike.%${sanitized}%`)
       .order('meeting_date', { ascending: false })
       .limit(SEARCH_LIMIT);
@@ -164,31 +162,19 @@ export async function GET(
       contact_name: (row.client_contact_name as string | null) ?? null,
     }));
 
-    // 会議結果のマッピング（contact_idからcontact名を取得）
+    // 会議結果のマッピング (JOIN 済みなので追加クエリ不要)
     const meetingRows = meetingResult.data ?? [];
-    const contactIds = meetingRows
-      .map((row) => row.contact_id as string | null)
-      .filter((id): id is string => id !== null);
-
-    let contactNameMap: Record<string, string> = {};
-    if (contactIds.length > 0) {
-      const { data: contactNames } = await supabase
-        .from('contacts')
-        .select('id, full_name')
-        .in('id', contactIds);
-      if (contactNames) {
-        contactNameMap = Object.fromEntries(
-          contactNames.map((c) => [c.id as string, c.full_name as string])
-        );
-      }
-    }
-
-    const meetings: SearchMeetingItem[] = meetingRows.map((row) => ({
-      id: row.id as string,
-      meeting_date: row.meeting_date as string,
-      source: row.source as string,
-      contact_name: (row.contact_id && contactNameMap[row.contact_id as string]) ?? null,
-    }));
+    const meetings: SearchMeetingItem[] = meetingRows.map((row) => {
+      const c = Array.isArray((row as Record<string, unknown>).contact)
+        ? ((row as Record<string, unknown>).contact as Array<{ full_name?: string }>)[0]
+        : ((row as Record<string, unknown>).contact as { full_name?: string } | null);
+      return {
+        id: row.id as string,
+        meeting_date: row.meeting_date as string,
+        source: row.source as string,
+        contact_name: c?.full_name ?? null,
+      };
+    });
 
     // 問い合わせ結果のマッピング
     const inquiries: SearchInquiryItem[] = (inquiryResult.data ?? []).map((row) => ({

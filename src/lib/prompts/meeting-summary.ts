@@ -88,6 +88,13 @@ export const MEETING_SUMMARY_PROMPT = `あなたは営業会議の議事録か�
 - 「来週」「月曜」等の相対的な日付は、可能な限り具体的な日付に変換
 - 期日の言及がない場合は null
 
+## suggestedDealTitleフィールド
+- 議事録から推定される **案件名(deals.title)** を簡潔に作成 (30文字以内目安)
+- 形式例: 「○○社 Webサイト改修提案」「△△向け業務効率化コンサル」「□□様 採用支援(2025下期)」
+- 含めるべき要素: 顧客名/会社名 + 案件の内容(サービス/制作物) + 必要なら時期
+- 営業同士で見ても何の案件か即座に分かる粒度に
+- 単なる雑談・既存案件のフォローのみ等で新規案件化が不要なら null
+
 ## 回答形式
 以下のJSON形式のみ出力（コードブロックで囲まないこと）:
 {
@@ -95,7 +102,8 @@ export const MEETING_SUMMARY_PROMPT = `あなたは営業会議の議事録か�
   "estimatedContact": "...",
   "participants": [...],
   "suggestedNextAction": "..." or null,
-  "suggestedNextActionDate": "YYYY-MM-DD" or null
+  "suggestedNextActionDate": "YYYY-MM-DD" or null,
+  "suggestedDealTitle": "..." or null
 }`;
 
 // ---------------------------------------------------------------------------
@@ -108,4 +116,6 @@ export const meetingSummarySchema = z.object({
   participants: z.array(z.string()),
   suggestedNextAction: z.string().nullable(),
   suggestedNextActionDate: z.string().nullable(),
+  // 案件名は500文字制限+HTMLタグ除去で prompt injection 対策
+  suggestedDealTitle: z.string().max(500).transform((s) => s.replace(/<[^>]*>/g, '')).nullish(),
 }).strict();

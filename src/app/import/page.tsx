@@ -74,48 +74,91 @@ const DEAL_FIELDS: readonly FieldDefinition[] = [
 ] as const;
 
 // ---------------------------------------------------------------------------
-// CSVパース (RFC 4180 準拠)
+// CSVパース (RFC 4180 準拠 - 改行入りquoted cell、BOM、CRLF対応)
 // ---------------------------------------------------------------------------
 
-function parseCSVLine(line: string, delimiter: string): string[] {
-  const fields: string[] = [];
+/**
+ * RFC4180 準拠の CSV パーサ。
+ * - quoted cell 内の改行(`\n`/`\r\n`)を保持
+ * - `""` を escaped quote として `"` に復元
+ * - BOM(`﻿`) を除去
+ * - CRLF / LF / CR どれも record separator として処理
+ * - 区切り文字は tab 含有なら `\t`、無ければ `,`
+ */
+function parseCSV(text: string): ParsedCSV {
+  // BOM 除去
+  if (text.charCodeAt(0) === 0xFEFF) {
+    text = text.slice(1);
+  }
+
+  const delimiter = text.includes('\t') ? '\t' : ',';
+
+  const records: string[][] = [];
   let current = '';
+  let row: string[] = [];
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const next = line[i + 1];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const n = text[i + 1];
 
     if (inQuotes) {
-      if (char === '"' && next === '"') {
+      if (c === '"' && n === '"') {
         current += '"';
         i++; // skip escaped quote
-      } else if (char === '"') {
+        continue;
+      }
+      if (c === '"') {
         inQuotes = false;
-      } else {
-        current += char;
+        continue;
       }
-    } else {
-      if (char === '"') {
-        inQuotes = true;
-      } else if (char === delimiter) {
-        fields.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
+      // 改行も含めて保持
+      current += c;
+      continue;
     }
-  }
-  fields.push(current.trim());
-  return fields;
-}
 
-function parseCSV(text: string): ParsedCSV {
-  const separator = text.includes('\t') ? '\t' : ',';
-  const lines = text.split('\n').filter((l) => l.trim());
-  const headers = parseCSVLine(lines[0], separator);
-  const rows = lines.slice(1).map((l) => parseCSVLine(l, separator));
-  return { headers, rows };
+    // not in quotes
+    if (c === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (c === delimiter) {
+      row.push(current.trim());
+      current = '';
+      continue;
+    }
+    if (c === '\r' && n === '\n') {
+      row.push(current.trim());
+      records.push(row);
+      row = [];
+      current = '';
+      i++; // skip LF
+      continue;
+    }
+    if (c === '\n' || c === '\r') {
+      row.push(current.trim());
+      records.push(row);
+      row = [];
+      current = '';
+      continue;
+    }
+    current += c;
+  }
+
+  // 末尾の record を flush
+  if (current.length > 0 || row.length > 0) {
+    row.push(current.trim());
+    records.push(row);
+  }
+
+  // 全空行(全フィールドが空)を除去
+  const nonEmptyRecords = records.filter((r) => r.some((f) => f.length > 0));
+  if (nonEmptyRecords.length === 0) return { headers: [], rows: [] };
+
+  return {
+    headers: nonEmptyRecords[0],
+    rows: nonEmptyRecords.slice(1),
+  };
 }
 
 // ---------------------------------------------------------------------------

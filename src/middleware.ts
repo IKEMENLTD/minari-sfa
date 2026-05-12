@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+// 通常APIは1MB、/api/importはCSV移行用に5MBまで許容
 const MAX_BODY_SIZE = 1_048_576;
+const MAX_BODY_SIZE_IMPORT = 5 * 1_048_576;
 const COOKIE_NAME = 'sd_auth';
 
 /**
@@ -101,6 +103,22 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // CSP: Next.js + Supabase + TLDV(thumbnail) + Anthropic(fetch from server-side only) 想定
+  // 'unsafe-inline' style は Tailwind/CSS-in-JS で必要、script は 'unsafe-eval' を含めない
+  response.headers.set(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https://tldv.io https://*.tldv.io",
+      "font-src 'self' data:",
+      "connect-src 'self' https://*.supabase.co https://pasta.tldv.io https://api.anthropic.com",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; ')
+  );
   if (process.env.NODE_ENV === 'production') {
     response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
@@ -125,14 +143,17 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // API ルートへの Content-Length チェック
+  // API ルートへの Content-Length チェック (importのみ5MB許容)
   if (pathname.startsWith('/api/')) {
     const contentLength = request.headers.get('content-length');
-    if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
-      return NextResponse.json(
-        { data: null, error: 'リクエストボディが大きすぎます（上限: 1MB）' },
-        { status: 413 }
-      );
+    if (contentLength) {
+      const limit = pathname.startsWith('/api/import') ? MAX_BODY_SIZE_IMPORT : MAX_BODY_SIZE;
+      if (parseInt(contentLength, 10) > limit) {
+        return NextResponse.json(
+          { data: null, error: `リクエストボディが大きすぎます（上限: ${Math.round(limit / 1024 / 1024)}MB）` },
+          { status: 413 }
+        );
+      }
     }
   }
 

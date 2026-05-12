@@ -94,6 +94,12 @@ const MEETING_SUMMARY_PROMPT = `あなたは営業会議の議事録から詳細
 - 「来週」「月曜」等の相対的な日付は、可能な限り具体的な日付に変換
 - 期日の言及がない場合は null
 
+## suggestedDealTitleフィールド
+- 議事録から推定される案件名(deals.title)を簡潔に作成 (30文字以内目安)
+- 形式例: 「○○社 Webサイト改修提案」「△△向け業務効率化コンサル」
+- 含めるべき要素: 顧客名/会社名 + 案件の内容 + 必要なら時期
+- 単なる雑談・既存案件のフォローのみ等で新規案件化が不要なら null
+
 ## 回答形式
 以下のJSON形式のみ出力（コードブロックで囲まないこと）:
 {
@@ -101,7 +107,8 @@ const MEETING_SUMMARY_PROMPT = `あなたは営業会議の議事録から詳細
   "estimatedContact": "...",
   "participants": [...],
   "suggestedNextAction": "..." or null,
-  "suggestedNextActionDate": "YYYY-MM-DD" or null
+  "suggestedNextActionDate": "YYYY-MM-DD" or null,
+  "suggestedDealTitle": "..." or null
 }`;
 
 // ---------------------------------------------------------------------------
@@ -138,12 +145,26 @@ function validateSummaryResult(raw) {
   if (raw.suggestedNextActionDate !== null && typeof raw.suggestedNextActionDate !== "string") {
     throw new Error("suggestedNextActionDate フィールドが文字列またはnullではありません");
   }
+  // suggestedDealTitle はoptional
+  if (
+    raw.suggestedDealTitle !== undefined &&
+    raw.suggestedDealTitle !== null &&
+    typeof raw.suggestedDealTitle !== "string"
+  ) {
+    throw new Error("suggestedDealTitle フィールドが文字列またはnullではありません");
+  }
+  // AI生成 title の sanitization: HTMLタグ除去 + 最大500文字 (prompt injection防御)
+  let cleanedTitle = null;
+  if (typeof raw.suggestedDealTitle === "string") {
+    cleanedTitle = raw.suggestedDealTitle.replace(/<[^>]*>/g, "").slice(0, 500).trim() || null;
+  }
   return {
     summary: raw.summary,
     estimatedContact: raw.estimatedContact,
     participants: raw.participants,
     suggestedNextAction: raw.suggestedNextAction || null,
     suggestedNextActionDate: raw.suggestedNextActionDate || null,
+    suggestedDealTitle: cleanedTitle,
   };
 }
 
@@ -312,6 +333,7 @@ exports.handler = async function (event, context) {
         model_used: CLAUDE_SONNET,
         suggested_next_action: result.suggestedNextAction || null,
         suggested_next_action_date: result.suggestedNextActionDate || null,
+        suggested_deal_title: result.suggestedDealTitle || null,
       });
 
       if (insertError) {

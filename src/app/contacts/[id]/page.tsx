@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, AlertCircle, Save, Trash2 } from 'lucide-react';
+import { ChevronRight, AlertCircle, Save, Trash2, Plus } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import {
   TableCell,
   TableHeader,
 } from '@/components/ui/table';
+import { DealCreationModal } from '@/components/deal/deal-creation-modal';
 import {
   TIER_LABEL,
   TOOL_LABEL,
@@ -76,6 +77,9 @@ export default function ContactDetailPage() {
   // deals
   const [deals, setDeals] = useState<DealWithContact[]>([]);
   const [dealsLoading, setDealsLoading] = useState(false);
+
+  // 新規案件モーダル
+  const [dealModalOpen, setDealModalOpen] = useState(false);
 
   const fetchContact = useCallback(async () => {
     if (!id) return;
@@ -403,7 +407,17 @@ export default function ContactDetailPage() {
           {/* 関連案件 */}
           <Card>
             <CardHeader>
-              <h2 className="text-sm font-semibold text-text">関連案件</h2>
+              <div className="flex items-center justify-between w-full">
+                <h2 className="text-sm font-semibold text-text">関連案件</h2>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setDealModalOpen(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  新規案件
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {dealsLoading ? (
@@ -525,6 +539,30 @@ export default function ContactDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* 新規案件モーダル(共通コンポーネント) */}
+      <DealCreationModal
+        open={dealModalOpen}
+        onClose={() => setDealModalOpen(false)}
+        title={`「${contact.full_name}」の新規案件`}
+        onSubmit={async (dealTitle) => {
+          const res = await fetch('/api/deals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contact_id: id,
+              title: dealTitle,
+              phase: 'proposal_planned',
+            }),
+          });
+          const json = await res.json();
+          if (res.ok && json.data?.id) {
+            router.push(`/deals/${json.data.id}`);
+            return { ok: true };
+          }
+          return { ok: false, error: json.error ?? '案件作成に失敗しました' };
+        }}
+      />
     </div>
   );
 }

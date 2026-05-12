@@ -108,6 +108,8 @@ export interface SummaryRow {
   model_used: string;
   suggested_next_action: string | null;
   suggested_next_action_date: string | null;
+  /** migration 006 で追加。未適用環境では undefined。 */
+  suggested_deal_title?: string | null;
   created_at: string;
 }
 
@@ -310,6 +312,7 @@ export interface MeetingSummaryResult {
   participants: string[];
   suggestedNextAction: string | null;
   suggestedNextActionDate: string | null;
+  suggestedDealTitle?: string | null;
 }
 
 // ---------------------------------------------------------------------------

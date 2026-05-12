@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ChevronRight,
@@ -15,12 +15,15 @@ import {
   Video,
   Copy,
   Check,
+  Sparkles,
+  Plus,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DealCreationModal } from '@/components/deal/deal-creation-modal';
 import { TOOL_LABEL } from '@/lib/constants';
 import { formatDateShort } from '@/lib/format';
 import type {
@@ -148,6 +151,10 @@ export default function MeetingDetailPage() {
   // AI次アクション採用
   const [adoptingAction, setAdoptingAction] = useState(false);
   const [adoptMsg, setAdoptMsg] = useState<string | null>(null);
+
+  // 案件作成モーダル
+  const [dealModalOpen, setDealModalOpen] = useState(false);
+  const router = useRouter();
 
   const fetchMeeting = useCallback(async () => {
     if (!id) return;
@@ -412,6 +419,12 @@ export default function MeetingDetailPage() {
     } finally {
       setCreatingContact(null);
     }
+  };
+
+  // モーダルを開く (案件作成ロジックは DealCreationModal に集約)
+  const openDealModal = () => {
+    if (!meeting?.contact_id) return;
+    setDealModalOpen(true);
   };
 
   // AI提案の次アクションを採用する
@@ -792,9 +805,24 @@ export default function MeetingDetailPage() {
                       </span>
                     )}
                   </div>
+                ) : meeting.contact_id ? (
+                  <div className="mt-3 space-y-2">
+                    {meeting.summary?.suggested_deal_title && (
+                      <div className="flex items-center gap-2 text-xs text-text-secondary">
+                        <Sparkles className="h-3.5 w-3.5 text-accent" />
+                        <span>AI提案の案件名: 「{meeting.summary.suggested_deal_title}」</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <Button size="sm" onClick={openDealModal}>
+                        <Plus className="h-3.5 w-3.5" />
+                        この会議から案件を作成
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <p className="text-xs text-text-secondary mt-3">
-                    案件を紐付けると、この次アクションを案件に反映できます
+                    コンタクトを紐付けると、この会議から案件作成や次アクション反映ができます
                   </p>
                 )}
               </CardContent>
@@ -901,6 +929,42 @@ export default function MeetingDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* 案件作成モーダル(共通コンポーネント) */}
+      <DealCreationModal
+        open={dealModalOpen}
+        onClose={() => setDealModalOpen(false)}
+        title="この会議から新規案件を作成"
+        initialTitle={meeting?.summary?.suggested_deal_title ?? meeting?.title ?? ''}
+        aiSuggestion={meeting?.summary?.suggested_deal_title ?? null}
+        onSubmit={async (dealTitle) => {
+          if (!meeting?.contact_id) return { ok: false, error: 'コンタクト紐付けがありません' };
+          const body: Record<string, unknown> = {
+            contact_id: meeting.contact_id,
+            title: dealTitle,
+            phase: 'proposal_planned',
+          };
+          if (meeting.summary?.suggested_next_action) body.next_action = meeting.summary.suggested_next_action;
+          if (meeting.summary?.suggested_next_action_date) body.next_action_date = meeting.summary.suggested_next_action_date;
+          const res = await fetch('/api/deals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const json = await res.json();
+          if (!res.ok || json.error) return { ok: false, error: json.error ?? '案件作成に失敗しました' };
+          const newDealId = json.data?.id;
+          if (newDealId) {
+            await fetch(`/api/meetings/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deal_id: newDealId }),
+            });
+            router.push(`/deals/${newDealId}`);
+          }
+          return { ok: true };
+        }}
+      />
     </div>
   );
 }
