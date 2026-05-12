@@ -17,14 +17,37 @@ export const ENV_ONLY_KEYS: readonly string[] = [
   'tldv_webhook_secret',
   'supabase_service_role_key',
   'site_password',
+  'auth_hmac_secret',
   'background_function_secret',
 ] as const;
 
 /**
+ * 機密判定パターン(接尾辞のみ + 明確な機密語彙のみ)。
+ * 一般語(api_version, auth_mode 等)が false positive にならないよう厳しめに絞る。
+ *
+ *   例:
+ *     `naito_api_key`     → `_api_key$` 接尾辞 → block
+ *     `claude_api_key_v2` → 末尾_keyに `_v2` 付き → 後述の正規表現で末尾だけ判定不可になるが、
+ *                          ENV_ONLY_KEYSにあるclaude_api_keyからの派生は明示登録を促す
+ *     `slack_webhook_url` → `_webhook_url$` or `_webhook_secret$` → block
+ *     `api_version`       → 末尾_keyではない → 通過 (機密でない)
+ */
+const SECRET_LIKE_PATTERNS: readonly RegExp[] = [
+  // 末尾 _key / _secret / _token / _password / _passphrase / _credential(s)
+  /_(api_key|secret_key|access_key|signing_key|webhook_key|api_secret|webhook_secret|oauth_secret|client_secret|access_token|refresh_token|bearer_token|api_token|webhook_token|password|passphrase|private_key|credential|credentials)$/i,
+];
+
+/**
  * 指定キーが env-only ポリシーの対象かどうか(大文字小文字無視)。
+ * 1) ENV_ONLY_KEYS 固定リスト一致 → block
+ * 2) SECRET_LIKE_PATTERNS いずれかにマッチ → block
+ *
+ * これにより、攻撃者が任意キー名("naito_api_key" 等)で機密を平文保存する経路を塞ぐ。
  */
 export function isEnvOnlyKey(key: string): boolean {
-  return ENV_ONLY_KEYS.includes(key.toLowerCase());
+  const lower = key.toLowerCase();
+  if (ENV_ONLY_KEYS.includes(lower)) return true;
+  return SECRET_LIKE_PATTERNS.some((re) => re.test(lower));
 }
 
 /**
@@ -37,4 +60,16 @@ export function getRequiredEnv(name: string): string {
     throw new Error(`環境変数 ${name} が設定されていません。Netlify Environment Variables を確認してください。`);
   }
   return value;
+}
+
+/**
+ * セッショントークンの HMAC 署名鍵を取得する。
+ * - AUTH_HMAC_SECRET が設定されていれば優先(独立鍵管理を推奨)
+ * - 後方互換: 未設定なら SITE_PASSWORD を fallback
+ *
+ * これにより SITE_PASSWORD を変更しても、AUTH_HMAC_SECRET を変えない限り
+ * 既存セッションは無効化されない(DoS回避)。
+ */
+export function getAuthHmacSecret(): string | null {
+  return process.env.AUTH_HMAC_SECRET ?? process.env.SITE_PASSWORD ?? null;
 }

@@ -18,7 +18,7 @@ import {
   TableCell,
   TableHeader,
 } from '@/components/ui/table';
-import { TOOL_LABEL } from '@/lib/constants';
+import { TOOL_LABEL, AUTO_LINK_SKIP_LABEL } from '@/lib/constants';
 import type { MeetingRow, ContactRow, MeetingTool } from '@/types';
 
 interface MeetingListItem extends MeetingRow {
@@ -56,6 +56,7 @@ function MeetingsContent() {
   const [total, setTotal] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [showUnlinkedHint, setShowUnlinkedHint] = useState(false);
   const [unlinked, setUnlinked] = useState<UnlinkedFilter>(
     (searchParams.get('unlinked') as UnlinkedFilter) ?? '',
   );
@@ -150,14 +151,32 @@ function MeetingsContent() {
         return;
       }
       const result = json.data;
-      const debugInfo = `（tldv: ${result.tldvTotal ?? '?'}件, DB既存: ${result.existingCount ?? '?'}件）`;
-      const errorInfo = result.errors?.length > 0 ? `\nエラー: ${result.errors.slice(0, 3).join(' / ')}` : '';
+      // 業務担当者向けの内訳表示: 「新規N件 + 既存M件 = TLDV全体K件」
+      const tldvTotal = result.tldvTotal ?? 0;
+      const existingCount = result.existingCount ?? 0;
+      const summary = `TLDV全体${tldvTotal}件中、新規${result.synced ?? 0}件、既存${existingCount}件`;
+      const errorInfo = result.errors?.length > 0 ? `\nエラー詳細: ${result.errors.slice(0, 3).join(' / ')}` : '';
+
+      const skips = result.autoLinkSkips ?? {};
+      const skipParts = Object.entries(skips)
+        .filter(([, n]) => (n as number) > 0)
+        .map(([k, n]) => `・${AUTO_LINK_SKIP_LABEL[k] ?? k}: ${n}件`);
+      const skipBreakdown = skipParts.length > 0
+        ? `\n\n【自動紐付けされなかった会議の理由と対応】\n${skipParts.join('\n')}`
+        : '';
+      const linkedInfo = result.autoLinked > 0 ? ` / 自動紐付け${result.autoLinked}件` : '';
+      // 未紐付け会議が増えたら誘導
+      const needsManualLinking = (result.synced ?? 0) > 0 && (result.autoLinked ?? 0) < (result.synced ?? 0);
+
+      setShowUnlinkedHint(needsManualLinking);
+
       if (result.synced === 0 && (!result.errors || result.errors.length === 0)) {
-        setSyncMessage(`新しい会議はありませんでした${debugInfo}`);
+        setSyncMessage(`新しい会議はありませんでした(${summary})`);
       } else if (result.synced === 0) {
-        setSyncMessage(`${result.tldvTotal ?? '?'}件取得しましたが全て保存に失敗しました${debugInfo}${errorInfo}`);
+        setSyncMessage(`同期失敗: ${summary}${errorInfo}`);
       } else {
-        setSyncMessage(`${result.synced}件の会議を同期しました${result.errors.length > 0 ? `（${result.errors.length}件エラー）` : ''}`);
+        const errMsg = result.errors?.length > 0 ? `（${result.errors.length}件エラー）` : '';
+        setSyncMessage(`${summary}${linkedInfo}${errMsg}${skipBreakdown}`);
         fetchMeetings();
       }
     } catch {
@@ -194,11 +213,28 @@ function MeetingsContent() {
 
       {syncMessage && (
         <div className={`rounded-md border px-4 py-3 text-sm whitespace-pre-wrap ${
-          syncMessage.includes('エラー')
+          syncMessage.includes('エラー') || syncMessage.includes('失敗')
             ? 'border-red-500/30 bg-red-500/10 text-red-400'
             : 'border-green-500/30 bg-green-500/10 text-green-400'
         }`}>
           {syncMessage}
+          {showUnlinkedHint && (
+            <div className="mt-3 pt-3 border-t border-current/20">
+              <button
+                type="button"
+                onClick={() => {
+                  setUnlinked('true');
+                  setPage(1);
+                  updateUrl('true', searchQuery, 1);
+                  setShowUnlinkedHint(false);
+                  setSyncMessage(null);
+                }}
+                className="text-sm font-medium underline hover:no-underline focus:outline-none focus:ring-2 focus:ring-accent/30"
+              >
+                → 未紐付け会議を表示して手動で紐付ける
+              </button>
+            </div>
+          )}
         </div>
       )}
 

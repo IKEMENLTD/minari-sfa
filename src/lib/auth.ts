@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getAuthHmacSecret } from '@/lib/config/secrets';
 import type { ApiResult } from '@/types';
 
 // =============================================================================
@@ -19,6 +20,19 @@ export interface AuthResult {
 }
 
 /**
+ * 認証なしでcookie値から userId 部分だけを抽出する(検証なし)。
+ * logout のキャッシュクリア用途。検証付きで取り出す場合は verifyAndExtractUserId を使う。
+ */
+export function extractUserIdUnsafe(cookieValue: string | undefined): string | null {
+  if (!cookieValue) return null;
+  const parts = cookieValue.split('.');
+  if (parts.length !== 3) return null;
+  const userId = parts[0];
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(userId) ? userId : null;
+}
+
+/**
  * セッショントークンを検証し、userId を返す。失敗時は null。
  *
  * ⚠️ Edge runtime版が `src/middleware.ts` に存在(Web Crypto API実装)。
@@ -34,9 +48,9 @@ function verifyAndExtractUserId(cookieValue: string): string | null {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidRegex.test(userId) || !uuidRegex.test(sessionId)) return null;
 
-  const hmacSecret = process.env.SITE_PASSWORD;
+  const hmacSecret = getAuthHmacSecret();
   if (!hmacSecret) {
-    console.error('SITE_PASSWORD 環境変数が設定されていません');
+    console.error('AUTH_HMAC_SECRET / SITE_PASSWORD のいずれも設定されていません');
     return null;
   }
 

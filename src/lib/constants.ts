@@ -4,6 +4,19 @@
 
 import type { DealPhase, DealProbability } from '@/types';
 
+// -----------------------------------------------------------------------------
+// auto-link スキップ理由 → 業務担当者向けラベル(取るべき次のアクションを含む)
+// `src/lib/auto-link-contacts.ts` の AutoLinkResult.reason に対応
+// -----------------------------------------------------------------------------
+export const AUTO_LINK_SKIP_LABEL: Record<string, string> = {
+  no_participants: '参加者情報なし',
+  no_parsed: '名前パース不可',
+  no_name_match: 'コンタクト未登録 → 新規作成して紐付け',
+  ambiguous_no_company: '同名複数あり(会社名不明) → 手動選択',
+  company_mismatch: '同名あるが会社名不一致 → 会社名追加 or 新規作成',
+  company_normalize_empty: '会社名正規化後が空 → 元データ確認',
+};
+
 export interface PhaseDefinition {
   id: DealPhase;
   name: string;

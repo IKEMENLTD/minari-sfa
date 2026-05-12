@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual, randomUUID, createHmac } from 'crypto';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getAuthHmacSecret } from '@/lib/config/secrets';
 
 const COOKIE_NAME = 'sd_auth';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7日(セキュリティのため30日→7日に短縮)
@@ -110,8 +111,12 @@ export async function POST(request: NextRequest) {
   // HMAC署名付きセッショントークンを生成
   //   形式: {userId}.{sessionId}.{hmac(userId + ':' + sessionId)}
   // userId をトークンに埋め込むことで、API側で users.role を DB lookup できる。
+  // 署名鍵は AUTH_HMAC_SECRET 優先(SITE_PASSWORD fallback): SITE_PASSWORD ローテーション時の全員DoS回避
   const sessionId = randomUUID();
-  const hmacSecret = process.env.SITE_PASSWORD!;
+  const hmacSecret = getAuthHmacSecret();
+  if (!hmacSecret) {
+    return NextResponse.json({ error: 'サーバー設定エラー' }, { status: 500 });
+  }
   const signature = createHmac('sha256', hmacSecret)
     .update(`${userId}:${sessionId}`)
     .digest('hex');

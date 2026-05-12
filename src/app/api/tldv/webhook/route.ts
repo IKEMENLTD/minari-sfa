@@ -17,7 +17,32 @@ const webhookPayloadSchema = z.object({
   title: z.string().optional(),
   date: z.string().optional(),
   participants: z.array(z.string()).optional(),
+  /** ISO8601 文字列 or Unix秒。リプレイ攻撃防止用 — 必須 */
+  timestamp: z.union([z.string(), z.number()]),
 });
+
+/** リプレイ攻撃防止: 5分以上前のペイロードを拒否する */
+const REPLAY_WINDOW_MS = 5 * 60 * 1000;
+
+type ReplayResult =
+  | { valid: true }
+  | { valid: false; reason: 'missing' | 'unparseable' | 'too_old' | 'future' };
+
+function checkPayloadFreshness(timestamp: string | number | undefined): ReplayResult {
+  if (timestamp === undefined) return { valid: false, reason: 'missing' };
+  let ts: number;
+  if (typeof timestamp === 'number') {
+    ts = timestamp < 1e12 ? timestamp * 1000 : timestamp;
+  } else {
+    const parsed = Date.parse(timestamp);
+    if (Number.isNaN(parsed)) return { valid: false, reason: 'unparseable' };
+    ts = parsed;
+  }
+  const age = Date.now() - ts;
+  if (age > REPLAY_WINDOW_MS) return { valid: false, reason: 'too_old' };
+  if (age < -60_000) return { valid: false, reason: 'future' };
+  return { valid: true };
+}
 
 type TldvWebhookPayload = z.infer<typeof webhookPayloadSchema>;
 
@@ -43,8 +68,10 @@ function verifyWebhookSignature(
 }
 
 // ---------------------------------------------------------------------------
-// TODO [E2]: Webhookリプレイ攻撃防止のため、ペイロードにタイムスタンプを含め、
-// 一定時間（例: 5分）以上前のリクエストを拒否する仕組みを将来実装する。
+// リプレイ攻撃防止 ✅ 実装済 (isReplayedPayload):
+//   - ペイロードに `timestamp` フィールドがある場合、5分以上前のものを拒否
+//   - 1分以上未来のものも拒否(時計ズレ吸収幅 ±1min)
+//   - timestamp 欠落の場合は WARN ログ + 通過 (TLDV側仕様に応じて strict 化検討)
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -88,6 +115,16 @@ export async function POST(
       );
     }
     const payload: TldvWebhookPayload = parseResult.data;
+
+    // リプレイ攻撃防止: timestamp 必須、5分以上前 or 1分以上未来は拒否
+    const freshness = checkPayloadFreshness(payload.timestamp);
+    if (!freshness.valid) {
+      console.warn('[tldv-webhook] timestamp拒否:', { reason: freshness.reason, timestamp: payload.timestamp, event: payload.event });
+      const msg = freshness.reason === 'missing'
+        ? 'ペイロードに timestamp フィールドが必要です'
+        : `timestamp が許容範囲外です (${freshness.reason})`;
+      return NextResponse.json({ data: null, error: msg }, { status: 403 });
+    }
 
     // TranscriptReadyイベントのみ処理
     if (payload.event !== 'TranscriptReady') {

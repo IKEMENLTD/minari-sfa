@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, isAuthError, requireRole } from '@/lib/auth';
-import { fetchMeetings, fetchTranscript } from '@/lib/external/tldv';
+import { fetchAllMeetings, fetchTranscript } from '@/lib/external/tldv';
 import { invokeSummarizeBackground } from '@/lib/netlify/background';
-import { autoLinkContactToMeeting } from '@/lib/auto-link-contacts';
+import { autoLinkContactToMeetingDetailed, type AutoLinkResult } from '@/lib/auto-link-contacts';
 import type { ApiResult, MeetingRow } from '@/types';
 
 // ---------------------------------------------------------------------------
 // 同期結果型
 // ---------------------------------------------------------------------------
+
+type SkipReason = Extract<AutoLinkResult, { status: 'skipped' }>['reason'];
 
 interface SyncResult {
   synced: number;
@@ -18,6 +20,8 @@ interface SyncResult {
   summarizing: number;
   /** コンタクトに自動紐付けされた会議数 */
   autoLinked: number;
+  /** auto-link スキップ理由別の件数(UI で表示) */
+  autoLinkSkips: Partial<Record<SkipReason, number>>;
   /** デバッグ: tldv APIから取得した会議数 */
   tldvTotal?: number;
   /** デバッグ: 既存の会議数 */
@@ -63,8 +67,8 @@ export async function POST(
         .filter(Boolean)
     );
 
-    // TLDV APIから全会議を取得
-    const allMeetings = await fetchMeetings({ pageSize: 50 });
+    // TLDV APIから全ページ巡回で会議を取得(51件目以降の漏れを防止)
+    const allMeetings = await fetchAllMeetings({ pageSize: 100, maxPages: 20 });
     const newMeetings = allMeetings.filter((m) => !existingIds.has(m.id));
 
     console.log(`[tldv-sync] tldv全件: ${allMeetings.length}, 既存: ${existingIds.size}, 新規: ${newMeetings.length}`);
@@ -74,7 +78,7 @@ export async function POST(
 
     if (newMeetings.length === 0) {
       return NextResponse.json({
-        data: { synced: 0, meetings: [], errors: [], summarizing: 0, autoLinked: 0, tldvTotal: allMeetings.length, existingCount: existingIds.size },
+        data: { synced: 0, meetings: [], errors: [], summarizing: 0, autoLinked: 0, autoLinkSkips: {}, tldvTotal: allMeetings.length, existingCount: existingIds.size },
         error: null,
       });
     }
@@ -83,6 +87,7 @@ export async function POST(
     const errors: string[] = [];
     const meetingIdsToSummarize: string[] = [];
     let autoLinkedCount = 0;
+    const autoLinkSkips: Partial<Record<SkipReason, number>> = {};
 
     for (const tldvMeeting of newMeetings) {
       try {
@@ -107,17 +112,19 @@ export async function POST(
 
         // 参加者名から既存コンタクトを自動紐付け（完全一致のみ）
         try {
-          const linkedId = await autoLinkContactToMeeting(
+          const linkResult = await autoLinkContactToMeetingDetailed(
             meeting.id as string,
             tldvMeeting.participants
           );
-          if (linkedId) {
+          if (linkResult.status === 'linked') {
             autoLinkedCount++;
-            // meeting オブジェクトにも反映
-            (meeting as Record<string, unknown>).contact_id = linkedId;
+            (meeting as Record<string, unknown>).contact_id = linkResult.contactId;
+          } else if (linkResult.status === 'skipped') {
+            autoLinkSkips[linkResult.reason] = (autoLinkSkips[linkResult.reason] ?? 0) + 1;
+          } else if (linkResult.status === 'error') {
+            console.warn(`[tldv-sync] auto-link error:`, linkResult.message);
           }
         } catch (linkErr) {
-          // 自動紐付け失敗は致命的ではないのでログのみ
           console.warn(
             `[tldv-sync] 会議 ${tldvMeeting.id} の自動紐付けに失敗:`,
             linkErr instanceof Error ? linkErr.message : linkErr
@@ -186,6 +193,7 @@ export async function POST(
         errors,
         summarizing: meetingIdsToSummarize.length,
         autoLinked: autoLinkedCount,
+        autoLinkSkips,
         tldvTotal: allMeetings.length,
         existingCount: existingIds.size,
       },

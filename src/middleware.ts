@@ -58,9 +58,11 @@ async function verifySessionToken(cookieValue: string): Promise<boolean> {
   // sigはHMAC-SHA256 hex = 64桁
   if (sig.length !== 64 || !HEX_REGEX.test(sig)) return false;
 
-  const hmacSecret = process.env.SITE_PASSWORD;
+  // AUTH_HMAC_SECRET 優先、未設定なら SITE_PASSWORD fallback
+  // (middleware は Edge runtime で lib/config/secrets を import 不可な場合あるため直読み)
+  const hmacSecret = process.env.AUTH_HMAC_SECRET ?? process.env.SITE_PASSWORD;
   if (!hmacSecret) {
-    console.error('SITE_PASSWORD 環境変数が設定されていません');
+    console.error('AUTH_HMAC_SECRET / SITE_PASSWORD のいずれも設定されていません');
     return false;
   }
   const encoder = new TextEncoder();

@@ -10,6 +10,8 @@ import type { TldvMeeting, TldvTranscript } from '@/types';
 // ---------------------------------------------------------------------------
 
 const TLDV_BASE_URL = 'https://pasta.tldv.io/v1alpha1';
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 500;
 
 function getApiKey(): string {
   const key = process.env.TLDV_API_KEY;
@@ -19,22 +21,61 @@ function getApiKey(): string {
   return key;
 }
 
+function isRetryableStatus(status: number): boolean {
+  // 429: rate limited, 408: request timeout, 5xx: server error
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * TLDV API への fetch ラッパー。指数バックオフで最大3回リトライ。
+ * - 429/5xx/408 はリトライ対象
+ * - 4xx (上記以外) は即fail
+ * - signal abort 時はリトライしない
+ */
 async function tldvFetch(path: string, signal?: AbortSignal): Promise<Response> {
-  const response = await fetch(`${TLDV_BASE_URL}${path}`, {
-    headers: {
-      'x-api-key': getApiKey(),
-      'Content-Type': 'application/json',
-    },
-    signal,
-  });
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(`${TLDV_BASE_URL}${path}`, {
+        headers: {
+          'x-api-key': getApiKey(),
+          'Content-Type': 'application/json',
+        },
+        signal,
+      });
 
-  if (!response.ok) {
-    const body = await response.text();
-    console.error(`TLDV API エラー (${response.status}):`, body);
-    throw new Error(`TLDV API エラー (${response.status})`);
+      if (response.ok) return response;
+
+      // リトライ可否判定
+      if (attempt < MAX_RETRIES && isRetryableStatus(response.status)) {
+        const body = await response.text().catch(() => '');
+        console.warn(`[tldv] retry ${attempt + 1}/${MAX_RETRIES} (status ${response.status}):`, body.slice(0, 200));
+        // Retry-After ヘッダ尊重(秒指定)
+        const retryAfter = response.headers.get('retry-after');
+        const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+        await sleep(delay);
+        continue;
+      }
+
+      const body = await response.text().catch(() => '');
+      console.error(`TLDV API エラー (${response.status}):`, body);
+      throw new Error(`TLDV API エラー (${response.status})`);
+    } catch (err) {
+      // AbortError はリトライしない
+      if (err instanceof Error && err.name === 'AbortError') throw err;
+      lastError = err;
+      if (attempt < MAX_RETRIES) {
+        console.warn(`[tldv] network retry ${attempt + 1}/${MAX_RETRIES}:`, err instanceof Error ? err.message : err);
+        await sleep(RETRY_BASE_DELAY_MS * Math.pow(2, attempt));
+        continue;
+      }
+    }
   }
-
-  return response;
+  throw lastError instanceof Error ? lastError : new Error('TLDV API: 不明なエラー');
 }
 
 /**
@@ -155,4 +196,27 @@ export async function fetchNewMeetings(
   const newOnes = meetings.filter((m) => !existingSourceIds.has(m.id));
   console.log(`[tldv] After filtering existing (${existingSourceIds.size}): ${newOnes.length} new`);
   return newOnes;
+}
+
+/**
+ * 全ページを巡回して TLDV API から全会議を取得する。
+ * - pageSize=100 で固定、ページ番号を1から増やしながら空ページまで継続
+ * - maxPages で暴走防止(デフォルト 20 = 最大2000件)
+ */
+export async function fetchAllMeetings(
+  options?: { pageSize?: number; maxPages?: number }
+): Promise<TldvMeeting[]> {
+  const pageSize = options?.pageSize ?? 100;
+  const maxPages = options?.maxPages ?? 20;
+  const all: TldvMeeting[] = [];
+
+  for (let page = 1; page <= maxPages; page++) {
+    const batch = await fetchMeetings({ pageSize, page });
+    if (batch.length === 0) break;
+    all.push(...batch);
+    // pageSize 未満なら最終ページ
+    if (batch.length < pageSize) break;
+  }
+
+  return all;
 }

@@ -75,7 +75,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse<ApiResul
     // セキュリティ: 機密系キーは DB 保存禁止(env-only)
     if (isEnvOnlyKey(parsed.data.key)) {
       return NextResponse.json(
-        { data: null, error: 'このキーは Netlify の環境変数でのみ設定可能です(DB保存は廃止されました)。' },
+        { data: null, error: 'このキーはセキュリティ上、画面からは保存できません。管理者(内藤さん)に依頼してサーバー側の環境変数として設定してください。' },
         { status: 400 }
       );
     }
