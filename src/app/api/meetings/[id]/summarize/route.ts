@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, isAuthError, requireRole } from '@/lib/auth';
-import { invokeSummarizeBackground } from '@/lib/netlify/background';
+import { processMeetingSummary } from '@/lib/process-meeting-summary';
 import type { ApiResult } from '@/types';
+
+// このルートは AI要約処理を直接実行する(Netlify Functions paid 120秒以内に完了想定)
+export const maxDuration = 120;
 
 const uuidSchema = z.string().uuid();
 
@@ -59,13 +62,30 @@ export async function POST(
       }
     }
 
-    // Background Functionで非同期実行
+    // 直接実行(PhaseM: BG関数廃止)
     try {
-      await invokeSummarizeBackground(id);
-    } catch (invokeErr) {
-      const msg = invokeErr instanceof Error ? invokeErr.message : 'BG関数呼び出しに失敗';
-      console.error('[summarize] BG呼出失敗:', msg);
-      // job_logs にも記録(原因切り分け用)
+      const result = await processMeetingSummary(id);
+      if (result.status === 'error') {
+        return NextResponse.json(
+          { data: null, error: result.message },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json({
+        data: {
+          queued: true,
+          status: result.status,
+          message: result.message,
+          summaryId: result.summaryId,
+          dealId: result.dealId,
+          dealCreated: result.dealCreated,
+          aiObservationAppended: result.aiObservationAppended,
+        },
+        error: null,
+      });
+    } catch (inlineErr) {
+      const msg = inlineErr instanceof Error ? inlineErr.message : 'AI要約処理に失敗';
+      console.error('[summarize] inline実行失敗:', msg);
       try {
         await supabase.from('job_logs').insert({
           job_type: 'summarize',
@@ -77,12 +97,10 @@ export async function POST(
         console.error('[summarize] job_log書込失敗:', logErr instanceof Error ? logErr.message : logErr);
       }
       return NextResponse.json(
-        { data: null, error: `Background Function呼び出しに失敗: ${msg}` },
+        { data: null, error: `AI要約処理に失敗: ${msg}` },
         { status: 500 },
       );
     }
-
-    return NextResponse.json({ data: { queued: true }, error: null });
   } catch (err) {
     const msg = err instanceof Error ? err.message : '要約リクエスト中にエラーが発生しました';
     console.error('[summarize] エラー:', msg);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, isAuthError, requireRole } from '@/lib/auth';
 import { fetchAllMeetings, fetchTranscript } from '@/lib/external/tldv';
-import { invokeSummarizeBackground } from '@/lib/netlify/background';
+import { processMeetingSummary } from '@/lib/process-meeting-summary';
 import { autoLinkContactToMeetingDetailed, type AutoLinkResult } from '@/lib/auto-link-contacts';
 import type { ApiResult, MeetingRow } from '@/types';
 
@@ -196,7 +196,11 @@ export async function POST(
 
     // 要約をNetlify Background Functionに委譲（Background Functionは即座に202を返す）
     for (const meetingId of meetingIdsToSummarize) {
-      await invokeSummarizeBackground(meetingId);
+      // sync route は最大10件処理、each summarize は背景実行(fire-and-forget)
+      // — sync 自体の応答を遅らせないため
+      void processMeetingSummary(meetingId).catch((e) => {
+        console.error('[sync] inline summarize failed:', e instanceof Error ? e.message : e);
+      });
     }
 
     return NextResponse.json({
