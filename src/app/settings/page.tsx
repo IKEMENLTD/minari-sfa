@@ -275,11 +275,16 @@ export default function SettingsPage() {
       if (json.error) {
         setFeedback((prev) => ({ ...prev, [key]: { type: 'error', message: json.error } }));
       } else {
-        setFeedback((prev) => ({ ...prev, [key]: { type: 'success', message: '保存しました' } }));
+        const msg = json.warning
+          ? `保存しました(⚠️ ${json.warning})`
+          : '✅ 暗号化して保存しました';
+        setFeedback((prev) => ({ ...prev, [key]: { type: json.warning ? 'error' : 'success', message: msg } }));
         setDirty((prev) => ({ ...prev, [key]: false }));
         await fetchSettings();
+        await fetchHealth();
       }
-      setTimeout(() => setFeedback((prev) => { const n = { ...prev }; delete n[key]; return n; }), 5000);
+      // warning 含むメッセージは長めに表示(読む時間)
+      setTimeout(() => setFeedback((prev) => { const n = { ...prev }; delete n[key]; return n; }), json.warning ? 15000 : 5000);
     } catch {
       setFeedback((prev) => ({ ...prev, [key]: { type: 'error', message: '保存に失敗しました' } }));
       setTimeout(() => setFeedback((prev) => { const n = { ...prev }; delete n[key]; return n; }), 5000);

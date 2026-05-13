@@ -113,6 +113,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse<ApiResul
     //   3) SECRET_LIKE_PATTERNS (`_api_key$` 等) → 400 拒否
     //  claude_api_key は `_api_key$` パターンに合致するが、ENCRYPTABLE_KEYS で先に救う設計。
     let storedValue = parsed.data.value;
+    let plaintextFallback = false;
     if (isEncryptableKey(parsed.data.key)) {
       // 暗号化対象 — 空値拒否は先に
       if (!parsed.data.value.trim()) {
@@ -122,11 +123,19 @@ export async function PATCH(request: NextRequest): Promise<NextResponse<ApiResul
         storedValue = encryptSetting(parsed.data.value);
       } catch (e) {
         const msg = e instanceof Error ? e.message : '暗号化に失敗しました';
-        console.error('暗号化失敗:', msg);
-        return NextResponse.json(
-          { data: null, error: `暗号化に失敗しました: ${msg}(SETTINGS_ENCRYPTION_KEY 未設定の可能性)` },
-          { status: 500 }
-        );
+        // SETTINGS_ENCRYPTION_KEY 未設定/不正 → 動作優先で平文 fallback
+        // (UI/レスポンスで明示警告、後で master key 設定+再保存で暗号化される)
+        if (msg.includes('SETTINGS_ENCRYPTION_KEY') || msg.includes('64 文字')) {
+          console.warn('[settings] master key 未設定/不正のため平文保存にフォールバック:', parsed.data.key);
+          plaintextFallback = true;
+          // storedValue は平文のまま
+        } else {
+          console.error('暗号化失敗(その他):', msg);
+          return NextResponse.json(
+            { data: null, error: `暗号化に失敗しました: ${msg}` },
+            { status: 500 }
+          );
+        }
       }
     } else if (isEnvOnlyKey(parsed.data.key)) {
       // env-only(SECRET_LIKE_PATTERNS含む)で encryptable でない → 拒否
@@ -155,7 +164,14 @@ export async function PATCH(request: NextRequest): Promise<NextResponse<ApiResul
       return NextResponse.json({ data: null, error: '設定の保存に失敗しました' }, { status: 500 });
     }
 
-    return NextResponse.json({ data: { success: true }, error: null });
+    const responseBody: ApiResult<{ success: boolean }> & { warning?: string } = {
+      data: { success: true },
+      error: null,
+    };
+    if (plaintextFallback) {
+      responseBody.warning = 'SETTINGS_ENCRYPTION_KEY が未設定のため平文で保存されました。Netlify env に 64文字hex の master key を設定して再保存すると暗号化されます。';
+    }
+    return NextResponse.json(responseBody);
   } catch (err) {
     console.error('設定の保存中にエラー:', err instanceof Error ? err.message : err);
     return NextResponse.json({ data: null, error: '設定の保存中にエラーが発生しました' }, { status: 500 });
