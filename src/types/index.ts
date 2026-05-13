@@ -30,6 +30,8 @@ export interface ContactRow {
   source: 'eight' | 'manual' | 'tldv';
   created_at: string;
   updated_at: string;
+  /** assigned_to の users 行(name のみ取得、一覧APIから返る) */
+  assignedUser?: { id: string; name: string } | null;
 }
 
 /** deals テーブル */
@@ -126,6 +128,8 @@ export interface InquiryRow {
   note: string | null;
   created_at: string;
   updated_at: string;
+  /** assigned_to の users 行(name のみ取得、一覧APIから返る) */
+  assignedUser?: { id: string; name: string } | null;
 }
 
 export type InquiryStatus = 'new' | 'in_progress' | 'completed';
@@ -280,9 +284,11 @@ export interface MeetingDetail extends MeetingRow {
   contact: ContactRow | null;
 }
 
-/** 案件 + コンタクト情報 */
+/** 案件 + コンタクト情報 + 担当者(UUID解決済) */
 export interface DealWithContact extends DealRow {
   contact: ContactRow | null;
+  /** assigned_to の users 行(name のみ取得) */
+  assignedUser?: { id: string; name: string } | null;
 }
 
 // ---------------------------------------------------------------------------

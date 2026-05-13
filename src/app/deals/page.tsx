@@ -159,15 +159,20 @@ function DealsContent() {
       if (!res.ok) throw new Error('データの取得に失敗しました');
       const json: { data: DealWithContact[]; total?: number } = await res.json();
 
-      // 担当者一覧を抽出
-      const uniqueAssignees = Array.from(
-        new Set(json.data.map((d) => d.assigned_to).filter(Boolean))
-      ).sort();
+      // 担当者一覧を抽出（UUIDは表示できないので name を label に）
+      const assigneeMap = new Map<string, string>();
+      for (const d of json.data) {
+        if (d.assigned_to && d.assignedUser?.name) {
+          assigneeMap.set(d.assigned_to, d.assignedUser.name);
+        }
+      }
       setAssignedToOptions(
-        uniqueAssignees.map((name) => ({ value: name, label: name }))
+        Array.from(assigneeMap.entries())
+          .sort((a, b) => a[1].localeCompare(b[1]))
+          .map(([uuid, name]) => ({ value: uuid, label: name }))
       );
 
-      // クライアントサイドフィルタ: 担当者
+      // クライアントサイドフィルタ: 担当者（UUID一致）
       let filtered = json.data;
       if (assignedToFilter) {
         filtered = filtered.filter((d) => d.assigned_to === assignedToFilter);
@@ -415,7 +420,7 @@ function DealsContent() {
                           </TableCell>
                           <TableCell>{d.revenue != null ? `${d.revenue.toLocaleString()}円` : '-'}</TableCell>
                           <TableCell>{d.deadline ?? '-'}</TableCell>
-                          <TableCell>{d.assigned_to ?? '-'}</TableCell>
+                          <TableCell>{d.assignedUser?.name ?? '-'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -490,7 +495,7 @@ function DealsContent() {
                             <span className="truncate max-w-[200px] inline-block">{d.next_action ?? '-'}</span>
                           </TableCell>
                           <TableCell>{d.next_action_date ? formatDateShort(d.next_action_date) : '-'}</TableCell>
-                          <TableCell>{d.assigned_to ?? '-'}</TableCell>
+                          <TableCell>{d.assignedUser?.name ?? '-'}</TableCell>
                         </TableRow>
                         );
                       })}

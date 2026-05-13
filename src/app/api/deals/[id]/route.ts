@@ -60,7 +60,7 @@ export async function GET(
 
     const { data, error } = await supabase
       .from('deals')
-      .select('*, contact:contacts(*)')
+      .select('*, contact:contacts(*), assignedUser:users!deals_assigned_to_fkey(id, name)')
       .eq('id', id)
       .single();
 
@@ -209,7 +209,7 @@ export async function PATCH(
       .from('deals')
       .update(updateData)
       .eq('id', id)
-      .select('*, contact:contacts(*)')
+      .select('*, contact:contacts(*), assignedUser:users!deals_assigned_to_fkey(id, name)')
       .single();
 
     if (error || !data) {
@@ -221,6 +221,8 @@ export async function PATCH(
     }
 
     const contact = Array.isArray(data.contact) ? data.contact[0] : data.contact;
+    const assignedUserRaw = (data as Record<string, unknown>).assignedUser;
+    const assignedUser = Array.isArray(assignedUserRaw) ? assignedUserRaw[0] : assignedUserRaw;
     const deal: DealWithContact = {
       id: data.id,
       contact_id: data.contact_id,
@@ -245,6 +247,7 @@ export async function PATCH(
       created_at: data.created_at,
       updated_at: data.updated_at,
       contact: contact ?? null,
+      assignedUser: (assignedUser as { id: string; name: string }) ?? null,
     };
 
     return NextResponse.json({ data: deal, error: null });

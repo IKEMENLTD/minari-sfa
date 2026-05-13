@@ -55,7 +55,7 @@ export async function GET(
 
     let query = supabase
       .from('contacts')
-      .select('*')
+      .select('*, assignedUser:users!contacts_assigned_to_fkey(id, name)')
       .order('updated_at', { ascending: false });
 
     if (tier) {

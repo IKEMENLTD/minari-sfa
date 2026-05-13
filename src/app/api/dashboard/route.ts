@@ -48,7 +48,7 @@ export async function GET(
     // --- 1. リマインダー: next_action_dateが今日以前のdeals（最大20件） ---
     let reminderQuery = supabase
       .from('deals')
-      .select('*, contact:contacts(*)')
+      .select('*, contact:contacts(*), assignedUser:users!deals_assigned_to_fkey(id, name)')
       .lte('next_action_date', today)
       .not('next_action_date', 'is', null)
       .order('next_action_date', { ascending: true })
@@ -67,6 +67,8 @@ export async function GET(
 
     const reminders: DealWithContact[] = (reminderData ?? []).map((row) => {
       const contact = Array.isArray(row.contact) ? row.contact[0] : row.contact;
+      const assignedUserRaw = (row as Record<string, unknown>).assignedUser;
+      const assignedUser = Array.isArray(assignedUserRaw) ? assignedUserRaw[0] : assignedUserRaw;
       return {
         id: row.id,
         contact_id: row.contact_id,
@@ -91,6 +93,7 @@ export async function GET(
         created_at: row.created_at,
         updated_at: row.updated_at,
         contact: contact ?? null,
+        assignedUser: (assignedUser as { id: string; name: string }) ?? null,
       };
     });
 

@@ -44,7 +44,7 @@ export async function GET(
 
     let query = supabase
       .from('inquiries')
-      .select('*')
+      .select('*, assignedUser:users!inquiries_assigned_to_fkey(id, name)')
       .order('created_at', { ascending: false });
 
     if (status) {

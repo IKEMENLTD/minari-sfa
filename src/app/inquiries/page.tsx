@@ -546,7 +546,7 @@ function InquiriesContent() {
                           {INQUIRY_STATUS_LABEL[inq.status] ?? inq.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{inq.assigned_to ?? '-'}</TableCell>
+                      <TableCell>{inq.assignedUser?.name ?? '-'}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           {inq.status !== 'completed' && (

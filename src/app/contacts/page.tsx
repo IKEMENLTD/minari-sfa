@@ -116,15 +116,20 @@ function ContactsContent() {
       if (!res.ok) throw new Error('データの取得に失敗しました');
       const json: { data: ContactRow[]; total?: number } = await res.json();
 
-      // 担当者一覧を抽出
-      const uniqueAssignees = Array.from(
-        new Set(json.data.map((c) => c.assigned_to).filter(Boolean))
-      ).sort();
+      // 担当者一覧を抽出（UUIDをvalue、name を label に）
+      const assigneeMap = new Map<string, string>();
+      for (const c of json.data) {
+        if (c.assigned_to && c.assignedUser?.name) {
+          assigneeMap.set(c.assigned_to, c.assignedUser.name);
+        }
+      }
       setAssignedToOptions(
-        uniqueAssignees.map((name) => ({ value: name, label: name }))
+        Array.from(assigneeMap.entries())
+          .sort((a, b) => a[1].localeCompare(b[1]))
+          .map(([uuid, name]) => ({ value: uuid, label: name }))
       );
 
-      // クライアントサイドフィルタ: 担当者
+      // クライアントサイドフィルタ: 担当者（UUID一致）
       const filtered = assignedToFilter
         ? json.data.filter((c) => c.assigned_to === assignedToFilter)
         : json.data;
@@ -366,7 +371,7 @@ function ContactsContent() {
                       <TableCell>
                         <Badge variant="info">{TIER_LABEL[c.tier] ?? `Tier ${c.tier}`}</Badge>
                       </TableCell>
-                      <TableCell>{c.assigned_to ?? '-'}</TableCell>
+                      <TableCell>{c.assignedUser?.name ?? '-'}</TableCell>
                       <TableCell>
                         {new Date(c.created_at).toLocaleDateString('ja-JP')}
                       </TableCell>

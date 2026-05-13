@@ -62,7 +62,7 @@ export async function GET(
 
     let query = supabase
       .from('deals')
-      .select('*, contact:contacts(*)')
+      .select('*, contact:contacts(*), assignedUser:users!deals_assigned_to_fkey(id, name)')
       .order('updated_at', { ascending: false });
 
     // 検索: title, deliverable, client_contact_name を部分一致検索
@@ -127,6 +127,8 @@ export async function GET(
 
     const deals: DealWithContact[] = (data ?? []).map((row) => {
       const contact = Array.isArray(row.contact) ? row.contact[0] : row.contact;
+      const assignedUserRaw = (row as Record<string, unknown>).assignedUser;
+      const assignedUser = Array.isArray(assignedUserRaw) ? assignedUserRaw[0] : assignedUserRaw;
       return {
         id: row.id,
         contact_id: row.contact_id,
@@ -151,6 +153,7 @@ export async function GET(
         created_at: row.created_at,
         updated_at: row.updated_at,
         contact: contact ?? null,
+        assignedUser: assignedUser ?? null,
       };
     });
 
