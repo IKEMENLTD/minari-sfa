@@ -110,9 +110,10 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
     [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
+      // ブラウザ拡張やレガシー CDN 経由の Google Fonts / Material Icons を許容
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
       "img-src 'self' data: blob: https://tldv.io https://*.tldv.io",
-      "font-src 'self' data:",
+      "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com",
       "connect-src 'self' https://*.supabase.co https://pasta.tldv.io https://api.anthropic.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",

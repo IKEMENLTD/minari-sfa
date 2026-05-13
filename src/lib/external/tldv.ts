@@ -10,8 +10,8 @@ import type { TldvMeeting, TldvTranscript } from '@/types';
 // ---------------------------------------------------------------------------
 
 const TLDV_BASE_URL = 'https://pasta.tldv.io/v1alpha1';
-const MAX_RETRIES = 3;
-const RETRY_BASE_DELAY_MS = 500;
+const MAX_RETRIES = 2; // 短縮: Netlify sync function 10秒制約に合わせる
+const RETRY_BASE_DELAY_MS = 250; // 0.25 → 0.5 → 1.0 で最悪1.75秒
 
 function getApiKey(): string {
   const key = process.env.TLDV_API_KEY;

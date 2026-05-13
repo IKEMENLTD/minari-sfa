@@ -140,9 +140,14 @@ function MeetingsContent() {
     updateUrl(unlinked, searchQuery, newPage);
   };
 
-  const handleSync = async () => {
+  // 連続同期(truncatedの場合に自動で再呼び出し、ユーザー任意で停止可能)
+  const MAX_CHAIN_SYNCS = 10;
+  const handleSync = async (chainCount = 0, accumulated?: {
+    synced: number; autoLinked: number; autoCreated: number; errors: string[];
+  }) => {
     setSyncing(true);
-    setSyncMessage(null);
+    if (chainCount === 0) setSyncMessage(null);
+    const acc = accumulated ?? { synced: 0, autoLinked: 0, autoCreated: 0, errors: [] };
     try {
       const res = await fetch('/api/tldv/sync', { method: 'POST' });
       const json = await res.json();
@@ -171,16 +176,44 @@ function MeetingsContent() {
       // 未紐付け会議が増えたら誘導
       const totalLinked = (result.autoLinked ?? 0) + (result.autoCreated ?? 0);
       const needsManualLinking = (result.synced ?? 0) > 0 && totalLinked < (result.synced ?? 0);
+      // 累積カウント更新
+      acc.synced += result.synced ?? 0;
+      acc.autoLinked += result.autoLinked ?? 0;
+      acc.autoCreated += result.autoCreated ?? 0;
+      if (result.errors?.length > 0) acc.errors.push(...result.errors);
+
+      // 打切なら 1秒後に自動で続き処理(最大MAX_CHAIN_SYNCS=10回まで=最大100件)
+      const willContinue = result.truncated && chainCount + 1 < MAX_CHAIN_SYNCS;
+      const truncatedNote = result.truncated
+        ? (willContinue
+          ? `\n⏩ 残り${result.remaining}件を自動で続き取得中...(${chainCount + 2}/${MAX_CHAIN_SYNCS})`
+          : `\n⏩ 残り${result.remaining}件 — 上限到達、もう一度「同期」を押すと続き取り込み`)
+        : '';
 
       setShowUnlinkedHint(needsManualLinking);
 
-      if (result.synced === 0 && (!result.errors || result.errors.length === 0)) {
-        setSyncMessage(`新しい会議はありませんでした(${summary})`);
-      } else if (result.synced === 0) {
-        setSyncMessage(`同期失敗: ${summary}${errorInfo}`);
+      // 累積メッセージ(チェーン中は累計、最後に完了メッセージ)
+      const totalSummary = chainCount > 0
+        ? `通算: 新規${acc.synced}件 / 自動紐付け${acc.autoLinked}件 / contact自動作成${acc.autoCreated}件`
+        : '';
+
+      if (willContinue) {
+        // 中継メッセージのみ、最後の chain完了で全体結果出す
+        setSyncMessage(`同期中... (${chainCount + 1}/${MAX_CHAIN_SYNCS})\n${totalSummary || summary}${truncatedNote}`);
+        // 1秒後に再呼び出し(API rate配慮)
+        setTimeout(() => { void handleSync(chainCount + 1, acc); }, 1000);
+        return;
+      }
+
+      // 終端(truncated=false or MAX到達)
+      if (result.synced === 0 && (!result.errors || result.errors.length === 0) && chainCount === 0) {
+        setSyncMessage(`新しい会議はありませんでした(${summary})${truncatedNote}`);
+      } else if (result.synced === 0 && chainCount === 0) {
+        setSyncMessage(`同期失敗: ${summary}${errorInfo}${truncatedNote}`);
       } else {
-        const errMsg = result.errors?.length > 0 ? `（${result.errors.length}件エラー）` : '';
-        setSyncMessage(`${summary}${linkedInfo}${errMsg}${skipBreakdown}`);
+        const finalSummary = chainCount > 0 ? totalSummary : summary;
+        const errMsg = acc.errors.length > 0 ? `（${acc.errors.length}件エラー）` : '';
+        setSyncMessage(`✅ ${finalSummary}${chainCount > 0 ? '' : linkedInfo}${errMsg}${skipBreakdown}${truncatedNote}`);
         fetchMeetings();
       }
     } catch {
@@ -200,7 +233,7 @@ function MeetingsContent() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={handleSync}
+            onClick={() => { void handleSync(); }}
             disabled={syncing}
           >
             <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />

@@ -69,16 +69,23 @@ export async function POST(
         .filter(Boolean)
     );
 
-    // TLDV APIから全ページ巡回で会議を取得(51件目以降の漏れを防止)
-    const allMeetings = await fetchAllMeetings({ pageSize: 100, maxPages: 20 });
+    // Netlify Function 同期実行 10秒制約: 全ページ巡回は5ページまで=500件。
+    // それ以上ある古い会議は次回同期で取り込み(冪等)。
+    const allMeetings = await fetchAllMeetings({ pageSize: 100, maxPages: 5 });
     const newMeetings = allMeetings.filter((m) => !existingIds.has(m.id));
 
-    console.log(`[tldv-sync] tldv全件: ${allMeetings.length}, 既存: ${existingIds.size}, 新規: ${newMeetings.length}`);
+    // さらに per-call 新規件数を 10件で打ち切り(transcript fetch * 10 で 5秒程度想定)。
+    // 11件目以降は次回同期で続き取り込み(冪等性で OK)。
+    const PER_CALL_LIMIT = 10;
+    const truncated = newMeetings.length > PER_CALL_LIMIT;
+    const newMeetingsToProcess = newMeetings.slice(0, PER_CALL_LIMIT);
+
+    console.log(`[tldv-sync] tldv全件: ${allMeetings.length}, 既存: ${existingIds.size}, 新規: ${newMeetings.length}, 今回処理: ${newMeetingsToProcess.length}${truncated ? ' (打切)' : ''}`);
     if (allMeetings.length > 0) {
       console.log(`[tldv-sync] 最初の会議ID: ${allMeetings[0].id}, title: ${allMeetings[0].title}`);
     }
 
-    if (newMeetings.length === 0) {
+    if (newMeetingsToProcess.length === 0) {
       return NextResponse.json({
         data: { synced: 0, meetings: [], errors: [], summarizing: 0, autoLinked: 0, autoCreated: 0, autoLinkSkips: {}, tldvTotal: allMeetings.length, existingCount: existingIds.size },
         error: null,
@@ -92,7 +99,7 @@ export async function POST(
     let autoCreatedCount = 0;
     const autoLinkSkips: Partial<Record<SkipReason, number>> = {};
 
-    for (const tldvMeeting of newMeetings) {
+    for (const tldvMeeting of newMeetingsToProcess) {
       try {
         // 会議をmeetingsテーブルに挿入
         const { data: meeting, error: meetingError } = await supabase
@@ -203,6 +210,8 @@ export async function POST(
         autoLinkSkips,
         tldvTotal: allMeetings.length,
         existingCount: existingIds.size,
+        truncated, // 11件以上残ってる場合 true (再同期で続き取り込みを促す)
+        remaining: truncated ? newMeetings.length - PER_CALL_LIMIT : 0,
       },
       error: null,
     });
