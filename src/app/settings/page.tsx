@@ -391,7 +391,15 @@ export default function SettingsPage() {
               <HealthRow label="Supabase 接続" state={health.checks.supabase ? 'good' : 'bad'} />
               <HealthRow label="認証署名鍵 (AUTH_HMAC_SECRET/SITE_PASSWORD)" state={health.checks.auth_secret ? 'good' : 'bad'} />
               <HealthRow label={`Background Function 認証鍵: ${KEY_STATE_LABEL[health.checks.background_secret].label}`} state={KEY_STATE_LABEL[health.checks.background_secret].tone} bare />
-              <HealthRow label="Settings 暗号化 master key" state={health.checks.settings_encryption ? 'good' : 'bad'} />
+              <HealthRow
+                label={
+                  health.checks.settings_encryption
+                    ? 'Settings 暗号化 master key (✅ 有効)'
+                    : 'Settings 暗号化 master key (未設定 — env運用なら任意)'
+                }
+                state={health.checks.settings_encryption ? 'good' : 'warn'}
+                bare
+              />
               <HealthRow label="ユーザー seed 適用済" state={health.checks.users_seeded ? 'good' : 'bad'} />
               <HealthRow label={`Claude API key: ${KEY_STATE_LABEL[health.checks.claude_api_key].label}`} state={KEY_STATE_LABEL[health.checks.claude_api_key].tone} bare />
               <HealthRow label={`TLDV API key: ${KEY_STATE_LABEL[health.checks.tldv_api_key].label}`} state={KEY_STATE_LABEL[health.checks.tldv_api_key].tone} bare />

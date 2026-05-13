@@ -34,7 +34,7 @@ interface HealthCheck {
  * 認証あり admin: env/DB の状態を詳細チェックして「何が足りないか」をUIに返す
  */
 export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<HealthCheck> | { ok: boolean; version: string }>> {
-  const version = '2026-05-13-phaseG';
+  const version = '2026-05-13-phaseK';
 
   // 認証 admin チェック(失敗時は最小レスポンス、unauthenticated でも 200で返す)
   const auth = await validateAuth(request);
@@ -99,13 +99,38 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
   // 各種ガイダンス
   if (!checks.auth_secret) issues.push('AUTH_HMAC_SECRET (or SITE_PASSWORD) が未設定 — Netlify env で設定してください。');
   if (checks.background_secret === 'missing') issues.push('BACKGROUND_FUNCTION_SECRET が未設定 — Netlify env または /settings から設定すると AI要約が動きます。');
-  else if (checks.background_secret === 'db_plaintext') issues.push('BACKGROUND_FUNCTION_SECRET が平文DB保存 — /settings から再保存すると暗号化されます。');
-  if (!checks.settings_encryption) issues.push('SETTINGS_ENCRYPTION_KEY が未設定または64文字hexでない — Netlify env で設定してください(UI設定の暗号化に必須)。');
-  if (checks.claude_api_key === 'missing') issues.push('Claude API key が未設定 — /settings から登録してください(SETTINGS_ENCRYPTION_KEY が必要)。');
-  if (checks.claude_api_key === 'db_plaintext') issues.push('Claude API key が平文DB保存 — /settings から再保存すると暗号化されます。');
+  else if (checks.background_secret === 'db_plaintext') issues.push('BACKGROUND_FUNCTION_SECRET が平文DB保存 — /settings から再保存すると暗号化されます(SETTINGS_ENCRYPTION_KEY が必要)。');
+  if (checks.claude_api_key === 'missing') issues.push('Claude API key が未設定 — /settings から登録してください。');
+  if (checks.claude_api_key === 'db_plaintext') issues.push('Claude API key が平文DB保存 — /settings から再保存すると暗号化されます(SETTINGS_ENCRYPTION_KEY が必要)。');
   if (checks.tldv_api_key === 'missing') issues.push('TLDV API key が未設定 — /settings から登録してください。');
+  if (checks.tldv_api_key === 'db_plaintext') issues.push('TLDV API key が平文DB保存 — /settings から再保存すると暗号化されます(SETTINGS_ENCRYPTION_KEY が必要)。');
 
-  const ok = checks.supabase && checks.auth_secret && checks.claude_api_key !== 'missing' && checks.background_secret !== 'missing';
+  // SETTINGS_ENCRYPTION_KEY は env 運用の場合は不要。
+  // 全 operational secret が env から読まれている時のみ「情報」レベルで案内。
+  const hasAnyDbPlaintext =
+    checks.claude_api_key === 'db_plaintext' ||
+    checks.tldv_api_key === 'db_plaintext' ||
+    checks.background_secret === 'db_plaintext';
+  const allFromEnv =
+    checks.claude_api_key === 'env' &&
+    (checks.tldv_api_key === 'env' || checks.tldv_api_key === 'missing') &&
+    (checks.background_secret === 'env' || checks.background_secret === 'missing');
+
+  if (!checks.settings_encryption) {
+    if (hasAnyDbPlaintext) {
+      issues.push('⚠️ SETTINGS_ENCRYPTION_KEY が未設定 — 一部キーが平文DB保存です。Netlify env に64文字hex の master key を設定して、/settings で再保存すると暗号化されます。');
+    } else if (!allFromEnv) {
+      issues.push('SETTINGS_ENCRYPTION_KEY が未設定 — UI から API キーを保存する場合に暗号化されません(現状は env で動作中なので任意)。');
+    }
+    // env で全部足りている場合は何も追加しない(不要)
+  }
+
+  // ok判定: SETTINGS_ENCRYPTION_KEY は ok 判定から除外(env運用で動作可能なため)
+  const ok =
+    checks.supabase &&
+    checks.auth_secret &&
+    checks.claude_api_key !== 'missing' &&
+    checks.background_secret !== 'missing';
 
   return NextResponse.json({
     data: { ok, version, checks, issues },
