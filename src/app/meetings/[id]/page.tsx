@@ -158,6 +158,57 @@ export default function MeetingDetailPage() {
   const [dealModalOpen, setDealModalOpen] = useState(false);
   const router = useRouter();
 
+  // 案件名 ワンクリック採用
+  const [adoptingDealTitle, setAdoptingDealTitle] = useState(false);
+  const [adoptDealTitleMsg, setAdoptDealTitleMsg] = useState<string | null>(null);
+
+  // AI提案案件名で deal 即時作成
+  const handleAdoptDealTitle = async () => {
+    if (!meeting?.contact_id || !meeting.summary?.suggested_deal_title) return;
+    const title = meeting.summary.suggested_deal_title.trim();
+    if (!title) return;
+
+    setAdoptingDealTitle(true);
+    setAdoptDealTitleMsg(null);
+    try {
+      const body: Record<string, unknown> = {
+        contact_id: meeting.contact_id,
+        title,
+        phase: 'proposal_planned',
+      };
+      if (meeting.summary.suggested_next_action) body.next_action = meeting.summary.suggested_next_action;
+      if (meeting.summary.suggested_next_action_date) body.next_action_date = meeting.summary.suggested_next_action_date;
+
+      const res = await fetch('/api/deals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        setAdoptDealTitleMsg(json.error ?? '案件作成に失敗しました');
+        setTimeout(() => setAdoptDealTitleMsg(null), 8000);
+        return;
+      }
+      const newDealId = json.data?.id;
+      if (newDealId) {
+        await fetch(`/api/meetings/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deal_id: newDealId }),
+        });
+        setAdoptDealTitleMsg('✅ 案件を作成して紐付けました');
+        setTimeout(() => setAdoptDealTitleMsg(null), 5000);
+        fetchMeeting();
+      }
+    } catch {
+      setAdoptDealTitleMsg('案件作成に失敗しました');
+      setTimeout(() => setAdoptDealTitleMsg(null), 8000);
+    } finally {
+      setAdoptingDealTitle(false);
+    }
+  };
+
   const fetchMeeting = useCallback(async () => {
     if (!id) return;
     if (abortRef.current) abortRef.current.abort();
@@ -858,6 +909,52 @@ export default function MeetingDetailPage() {
             </CardContent>
           </Card>
 
+          {/* AI提案: 案件名 (suggested_deal_title 存在 + deal未紐付け時のみ表示) */}
+          {meeting.summary?.suggested_deal_title && !meeting.deal_id && (
+            <Card className="border-accent/40 bg-accent/5">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="h-4 w-4 text-accent" />
+                  <h4 className="text-sm font-semibold text-accent">AI提案: 案件名</h4>
+                </div>
+                <p className="text-base font-medium text-text mt-1 leading-snug">
+                  {meeting.summary.suggested_deal_title}
+                </p>
+                {meeting.contact_id ? (
+                  <div className="flex items-center flex-wrap gap-2 mt-3">
+                    <Button
+                      size="sm"
+                      onClick={handleAdoptDealTitle}
+                      loading={adoptingDealTitle}
+                      disabled={adoptingDealTitle}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      この案件名で作成
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={openDealModal}
+                      disabled={adoptingDealTitle}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      修正して作成
+                    </Button>
+                    {adoptDealTitleMsg && (
+                      <span className={`text-xs ${adoptDealTitleMsg.includes('✅') ? 'text-green-500' : 'text-red-400'}`}>
+                        {adoptDealTitleMsg}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-text-secondary mt-3">
+                    💡 コンタクトを紐付けると、この案件名でワンクリック作成できます
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* AI提案: 次アクション */}
           {meeting.summary && suggestedNextAction && (
             <Card className="border-accent/30 bg-accent/5">
@@ -889,26 +986,11 @@ export default function MeetingDetailPage() {
                       </span>
                     )}
                   </div>
-                ) : meeting.contact_id ? (
-                  <div className="mt-3 space-y-2">
-                    {meeting.summary?.suggested_deal_title && (
-                      <div className="flex items-center gap-2 text-xs text-text-secondary">
-                        <Sparkles className="h-3.5 w-3.5 text-accent" />
-                        <span>AI提案の案件名: 「{meeting.summary.suggested_deal_title}」</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3">
-                      <Button size="sm" onClick={openDealModal}>
-                        <Plus className="h-3.5 w-3.5" />
-                        この会議から案件を作成
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
+                ) : !meeting.contact_id ? (
                   <p className="text-xs text-text-secondary mt-3">
-                    コンタクトを紐付けると、この会議から案件作成や次アクション反映ができます
+                    💡 コンタクトと案件を紐付けると、次アクションを deal に反映できます
                   </p>
-                )}
+                ) : null}
               </CardContent>
             </Card>
           )}
