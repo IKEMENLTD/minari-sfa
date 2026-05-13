@@ -39,7 +39,8 @@ interface ClaudeOptions {
  * env 設定不要で運用可能。env を併用すれば env が優先(ホットフィックス用)。
  */
 async function getClaudeApiKey(): Promise<string> {
-  const envKey = process.env.CLAUDE_API_KEY;
+  // ⚠️ trim() で末尾改行/空白除去(Netlify env への copy-paste 事故対策)
+  const envKey = process.env.CLAUDE_API_KEY?.trim();
   if (envKey) return envKey;
 
   try {
@@ -52,11 +53,10 @@ async function getClaudeApiKey(): Promise<string> {
     if (error || !data?.value) {
       throw new Error('app_settings に claude_api_key が登録されていません');
     }
-    const raw = data.value as string;
+    const raw = (data.value as string).trim();
     if (isEncryptedValue(raw)) {
-      return decryptSetting(raw);
+      return decryptSetting(raw).trim();
     }
-    // レガシー平文値も互換維持(警告)
     console.warn('[claude] claude_api_key が平文で保存されています。/settings から再保存して暗号化してください。');
     return raw;
   } catch (err) {
@@ -96,7 +96,9 @@ async function callClaude(
   if (!response.ok) {
     const errorBody = await response.text();
     console.error(`Claude API エラー詳細 (${response.status}):`, errorBody);
-    throw new Error(`Claude API エラー (${response.status}): リクエストに失敗しました`);
+    // Anthropic のエラー body を 500文字まで含めて投げる(job_logs に保存される)
+    const truncatedBody = errorBody.substring(0, 500).replace(/\s+/g, ' ');
+    throw new Error(`Claude API エラー (${response.status}): ${truncatedBody}`);
   }
 
   const data = (await response.json()) as ClaudeResponse;

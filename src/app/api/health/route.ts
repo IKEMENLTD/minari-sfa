@@ -196,16 +196,18 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
   // Claude API キー実機検証(?ping=claude 時のみ)
   if (new URL(request.url).searchParams.get('ping') === 'claude') {
     try {
-      // env or DB から API キーを取得
-      let apiKey = process.env.CLAUDE_API_KEY;
+      // env or DB から API キーを取得(env優先 + trim)
+      let apiKey: string | undefined = process.env.CLAUDE_API_KEY?.trim();
+      let keySource = 'env';
       if (!apiKey) {
         try {
           const supabase = createServerSupabaseClient();
           const { data } = await supabase.from('app_settings').select('value').eq('key', 'claude_api_key').single();
           if (data?.value) {
             const { decryptSetting, isEncryptedValue } = await import('@/lib/crypto/settings-cipher');
-            const raw = data.value as string;
-            apiKey = isEncryptedValue(raw) ? decryptSetting(raw) : raw;
+            const raw = (data.value as string).trim();
+            apiKey = (isEncryptedValue(raw) ? decryptSetting(raw) : raw).trim();
+            keySource = 'db';
           }
         } catch {
           // ignore
@@ -215,6 +217,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
         checks.claude_api_reachable = 'auth_fail';
         checks.claude_api_message = 'API key 未設定';
       } else {
+        const keyPreview = `${apiKey.substring(0, 18)}...${apiKey.substring(apiKey.length - 6)} (${apiKey.length}文字, from ${keySource})`;
         // Anthropic API に最小 ping: max_tokens=1
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -236,15 +239,15 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
           clearTimeout(timeoutId);
           if (res.ok) {
             checks.claude_api_reachable = 'ok';
-            checks.claude_api_message = '✅ Anthropic API 認証成功';
+            checks.claude_api_message = `✅ Anthropic API 認証成功 — 使用キー: ${keyPreview}`;
           } else if (res.status === 401) {
             checks.claude_api_reachable = 'auth_fail';
             const body = await res.text().catch(() => '');
-            checks.claude_api_message = `❌ 401 — API keyが無効/revoke/期限切れ。${body.substring(0, 100)}`;
+            checks.claude_api_message = `❌ 401 — 使用キー: ${keyPreview} — Anthropic応答: ${body.substring(0, 300).replace(/\s+/g, ' ')}`;
           } else {
             const body = await res.text().catch(() => '');
             checks.claude_api_reachable = 'network_fail';
-            checks.claude_api_message = `status=${res.status} ${body.substring(0, 100)}`;
+            checks.claude_api_message = `status=${res.status} 使用キー: ${keyPreview} — ${body.substring(0, 200).replace(/\s+/g, ' ')}`;
           }
         } catch (fetchErr) {
           clearTimeout(timeoutId);
