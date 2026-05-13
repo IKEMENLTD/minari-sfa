@@ -301,6 +301,11 @@ export default function DealDetailPage() {
         </Link>
         <ChevronRight className="h-3.5 w-3.5" />
         <span className="text-text">{deal.title}</span>
+        {deal.note?.startsWith('[自動生成]') && (
+          <span className="ml-2 inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/30" title={deal.note}>
+            ✨ AI自動生成
+          </span>
+        )}
       </nav>
 
       <div className="grid gap-6 lg:grid-cols-3">

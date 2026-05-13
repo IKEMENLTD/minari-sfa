@@ -614,6 +614,31 @@ export default function MeetingDetailPage() {
               </Link>
             )}
             {!meeting.contact_id && <Badge variant="warning">未紐付け</Badge>}
+            {meeting.deal_id && (
+              <div className="inline-flex items-center gap-1.5">
+                <Link href={`/deals/${meeting.deal_id}`} className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20">
+                  <Sparkles className="h-3 w-3" />
+                  案件紐付け済
+                </Link>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!confirm('この会議と案件の紐付けを解除しますか?\n(案件自体は残ります。誤生成だった場合の対処に使用)')) return;
+                    await fetch(`/api/meetings/${id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ deal_id: null }),
+                    });
+                    fetchMeeting();
+                  }}
+                  className="text-xs text-red-400 hover:text-red-500 underline px-1"
+                  title="この会議と案件の紐付けだけ解除する(案件は残る)"
+                  aria-label="案件紐付けを解除"
+                >
+                  紐付け解除
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
