@@ -172,6 +172,8 @@ interface HealthData {
     users_seeded: boolean;
     bg_function_reachable?: 'ok' | 'auth_fail' | 'network_fail' | 'not_tested';
     bg_function_message?: string;
+    claude_api_reachable?: 'ok' | 'auth_fail' | 'network_fail' | 'not_tested';
+    claude_api_message?: string;
   };
   issues: string[];
 }
@@ -217,10 +219,10 @@ export default function SettingsPage() {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
 
-  const fetchHealth = useCallback(async (withBgPing = false) => {
+  const fetchHealth = useCallback(async (ping?: 'bg' | 'claude') => {
     setHealthLoading(true);
     try {
-      const url = withBgPing ? '/api/health?ping=bg' : '/api/health';
+      const url = ping ? `/api/health?ping=${ping}` : '/api/health';
       const res = await fetch(url);
       const json = await res.json();
       if (json.data) setHealth(json.data as HealthData);
@@ -379,10 +381,10 @@ export default function SettingsPage() {
                   </>
                 )}
               </h2>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => { void fetchHealth(false); }}
+                  onClick={() => { void fetchHealth(); }}
                   disabled={healthLoading}
                   className="text-xs text-accent hover:underline disabled:opacity-50"
                 >
@@ -390,12 +392,21 @@ export default function SettingsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { void fetchHealth(true); }}
+                  onClick={() => { void fetchHealth('claude'); }}
                   disabled={healthLoading}
-                  className="text-xs text-accent hover:underline disabled:opacity-50"
-                  title="Background Function に接続テストを実行(8秒以内に応答)"
+                  className="text-xs text-accent hover:underline disabled:opacity-50 font-medium"
+                  title="Anthropic API に最小 ping を投げて Claude APIキーが有効か確認(8秒以内)"
                 >
-                  {healthLoading ? '...' : 'BG関数接続テスト'}
+                  {healthLoading ? '...' : '🔑 Claudeキー検証'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void fetchHealth('bg'); }}
+                  disabled={healthLoading}
+                  className="text-xs text-text-secondary hover:underline disabled:opacity-50"
+                  title="(PhaseM以降は使用しない、互換のため残置)"
+                >
+                  BG関数接続テスト
                 </button>
               </div>
             </div>
@@ -443,6 +454,30 @@ export default function SettingsPage() {
                 {health.checks.bg_function_message && (
                   <p className="text-[10px] text-text-secondary mt-1 break-all font-mono">
                     {health.checks.bg_function_message}
+                  </p>
+                )}
+              </div>
+            )}
+            {/* Claude API キー検証結果 */}
+            {health.checks.claude_api_reachable && health.checks.claude_api_reachable !== 'not_tested' && (
+              <div className={`mt-3 rounded-md border px-3 py-2 ${
+                health.checks.claude_api_reachable === 'ok'
+                  ? 'border-green-500/40 bg-green-500/10'
+                  : 'border-red-500/40 bg-red-500/10'
+              }`}>
+                <p className="text-xs font-medium">
+                  {health.checks.claude_api_reachable === 'ok' && '✅ Claude API キー有効(Anthropic認証成功)'}
+                  {health.checks.claude_api_reachable === 'auth_fail' && '❌ Claude API キー 401 — 無効/revoke/期限切れ'}
+                  {health.checks.claude_api_reachable === 'network_fail' && '❌ Anthropic API 接続失敗'}
+                </p>
+                {health.checks.claude_api_message && (
+                  <p className="text-[10px] text-text-secondary mt-1 break-all font-mono">
+                    {health.checks.claude_api_message}
+                  </p>
+                )}
+                {health.checks.claude_api_reachable === 'auth_fail' && (
+                  <p className="text-[11px] mt-2 text-text">
+                    👉 <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-accent underline">Anthropic Console</a> で新しいキーを発行 → 上の Claude API Key 欄に貼り付けて保存
                   </p>
                 )}
               </div>

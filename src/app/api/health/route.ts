@@ -25,6 +25,9 @@ interface HealthCheck {
     /** Background Function 実機接続テスト(?ping=bg 時のみ) */
     bg_function_reachable?: 'ok' | 'auth_fail' | 'network_fail' | 'not_tested';
     bg_function_message?: string;
+    /** Claude API キー実機検証(?ping=claude 時のみ) */
+    claude_api_reachable?: 'ok' | 'auth_fail' | 'network_fail' | 'not_tested';
+    claude_api_message?: string;
   };
   /** 詳細ガイダンス(admin 向け) */
   issues: string[];
@@ -58,6 +61,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
     tldv_api_key: 'missing',
     users_seeded: false,
     bg_function_reachable: 'not_tested',
+    claude_api_reachable: 'not_tested',
   };
   if (process.env.BACKGROUND_FUNCTION_SECRET) checks.background_secret = 'env';
   const issues: string[] = [];
@@ -172,6 +176,71 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
     } catch (e) {
       checks.bg_function_reachable = 'network_fail';
       checks.bg_function_message = e instanceof Error ? e.message : 'unknown';
+    }
+  }
+
+  // Claude API キー実機検証(?ping=claude 時のみ)
+  if (new URL(request.url).searchParams.get('ping') === 'claude') {
+    try {
+      // env or DB から API キーを取得
+      let apiKey = process.env.CLAUDE_API_KEY;
+      if (!apiKey) {
+        try {
+          const supabase = createServerSupabaseClient();
+          const { data } = await supabase.from('app_settings').select('value').eq('key', 'claude_api_key').single();
+          if (data?.value) {
+            const { decryptSetting, isEncryptedValue } = await import('@/lib/crypto/settings-cipher');
+            const raw = data.value as string;
+            apiKey = isEncryptedValue(raw) ? decryptSetting(raw) : raw;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      if (!apiKey) {
+        checks.claude_api_reachable = 'auth_fail';
+        checks.claude_api_message = 'API key 未設定';
+      } else {
+        // Anthropic API に最小 ping: max_tokens=1
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        try {
+          const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: 'claude-haiku-4-5-20251001', // 最小コストモデル
+              max_tokens: 1,
+              messages: [{ role: 'user', content: 'hi' }],
+            }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            checks.claude_api_reachable = 'ok';
+            checks.claude_api_message = '✅ Anthropic API 認証成功';
+          } else if (res.status === 401) {
+            checks.claude_api_reachable = 'auth_fail';
+            const body = await res.text().catch(() => '');
+            checks.claude_api_message = `❌ 401 — API keyが無効/revoke/期限切れ。${body.substring(0, 100)}`;
+          } else {
+            const body = await res.text().catch(() => '');
+            checks.claude_api_reachable = 'network_fail';
+            checks.claude_api_message = `status=${res.status} ${body.substring(0, 100)}`;
+          }
+        } catch (fetchErr) {
+          clearTimeout(timeoutId);
+          checks.claude_api_reachable = 'network_fail';
+          checks.claude_api_message = fetchErr instanceof Error ? fetchErr.message : 'fetch失敗';
+        }
+      }
+    } catch (e) {
+      checks.claude_api_reachable = 'network_fail';
+      checks.claude_api_message = e instanceof Error ? e.message : 'unknown';
     }
   }
 
