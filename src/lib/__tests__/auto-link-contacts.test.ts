@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeIlike, normalizeCompanyName } from '../auto-link-contacts';
+import { escapeIlike, normalizeCompanyName, looksLikeNoise, isInternalMember } from '../auto-link-contacts';
 
 describe('escapeIlike', () => {
   it('escapes percent', () => {
@@ -70,5 +70,46 @@ describe('normalizeCompanyName', () => {
   it('does NOT match different companies with similar names (e.g., partial overlap)', () => {
     // 同名混同を防ぐ: "イケメン" と "イケメンUSA" は別物
     expect(normalizeCompanyName('株式会社イケメン')).not.toBe(normalizeCompanyName('株式会社イケメンUSA'));
+  });
+});
+
+describe('looksLikeNoise', () => {
+  it('flags SPEAKER_xx', () => {
+    expect(looksLikeNoise('SPEAKER_01')).toBe(true);
+    expect(looksLikeNoise('SPEAKER01')).toBe(true);
+    expect(looksLikeNoise('speaker_5')).toBe(true);
+  });
+  it('flags Unknown/Guest/User_xx', () => {
+    expect(looksLikeNoise('Unknown')).toBe(true);
+    expect(looksLikeNoise('guest_1')).toBe(true);
+    expect(looksLikeNoise('user2')).toBe(true);
+    expect(looksLikeNoise('anonymous')).toBe(true);
+  });
+  it('flags very short or symbol-only', () => {
+    expect(looksLikeNoise('a')).toBe(true);
+    expect(looksLikeNoise('?')).toBe(true);
+    expect(looksLikeNoise('---')).toBe(true);
+    expect(looksLikeNoise('123')).toBe(true);
+  });
+  it('does NOT flag real names', () => {
+    expect(looksLikeNoise('内藤 健司')).toBe(false);
+    expect(looksLikeNoise('Macoto Tanaka')).toBe(false);
+    expect(looksLikeNoise('山田')).toBe(false);
+    expect(looksLikeNoise('ueno toshiyuki')).toBe(false);
+  });
+});
+
+describe('isInternalMember', () => {
+  const internal = new Set(['内藤健司', 'メンバーa', 'メンバーb']);
+  it('matches exact internal member', () => {
+    expect(isInternalMember('内藤 健司', internal)).toBe(true); // 空白除去で一致
+    expect(isInternalMember('メンバーA', internal)).toBe(true); // 大文字小文字無視
+  });
+  it('does not match external participant', () => {
+    expect(isInternalMember('田中太郎', internal)).toBe(false);
+    expect(isInternalMember('Seri Naito', internal)).toBe(false); // 別人
+  });
+  it('handles full-width spaces', () => {
+    expect(isInternalMember('内藤　健司', internal)).toBe(true);
   });
 });

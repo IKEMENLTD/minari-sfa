@@ -18,8 +18,10 @@ interface SyncResult {
   errors: string[];
   /** バックグラウンドで要約処理中の会議数 */
   summarizing: number;
-  /** コンタクトに自動紐付けされた会議数 */
+  /** 既存contactに自動紐付けされた会議数 */
   autoLinked: number;
+  /** 新規contact自動作成された会議数(PhaseC) */
+  autoCreated: number;
   /** auto-link スキップ理由別の件数(UI で表示) */
   autoLinkSkips: Partial<Record<SkipReason, number>>;
   /** デバッグ: tldv APIから取得した会議数 */
@@ -78,7 +80,7 @@ export async function POST(
 
     if (newMeetings.length === 0) {
       return NextResponse.json({
-        data: { synced: 0, meetings: [], errors: [], summarizing: 0, autoLinked: 0, autoLinkSkips: {}, tldvTotal: allMeetings.length, existingCount: existingIds.size },
+        data: { synced: 0, meetings: [], errors: [], summarizing: 0, autoLinked: 0, autoCreated: 0, autoLinkSkips: {}, tldvTotal: allMeetings.length, existingCount: existingIds.size },
         error: null,
       });
     }
@@ -87,6 +89,7 @@ export async function POST(
     const errors: string[] = [];
     const meetingIdsToSummarize: string[] = [];
     let autoLinkedCount = 0;
+    let autoCreatedCount = 0;
     const autoLinkSkips: Partial<Record<SkipReason, number>> = {};
 
     for (const tldvMeeting of newMeetings) {
@@ -118,6 +121,9 @@ export async function POST(
           );
           if (linkResult.status === 'linked') {
             autoLinkedCount++;
+            (meeting as Record<string, unknown>).contact_id = linkResult.contactId;
+          } else if (linkResult.status === 'auto_created') {
+            autoCreatedCount++;
             (meeting as Record<string, unknown>).contact_id = linkResult.contactId;
           } else if (linkResult.status === 'skipped') {
             autoLinkSkips[linkResult.reason] = (autoLinkSkips[linkResult.reason] ?? 0) + 1;
@@ -193,6 +199,7 @@ export async function POST(
         errors,
         summarizing: meetingIdsToSummarize.length,
         autoLinked: autoLinkedCount,
+        autoCreated: autoCreatedCount,
         autoLinkSkips,
         tldvTotal: allMeetings.length,
         existingCount: existingIds.size,

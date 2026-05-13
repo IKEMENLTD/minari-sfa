@@ -164,9 +164,13 @@ function MeetingsContent() {
       const skipBreakdown = skipParts.length > 0
         ? `\n\n【自動紐付けされなかった会議の理由と対応】\n${skipParts.join('\n')}`
         : '';
-      const linkedInfo = result.autoLinked > 0 ? ` / 自動紐付け${result.autoLinked}件` : '';
+      const linkedParts: string[] = [];
+      if (result.autoLinked > 0) linkedParts.push(`既存に紐付け${result.autoLinked}件`);
+      if (result.autoCreated > 0) linkedParts.push(`✨新規contact自動作成${result.autoCreated}件`);
+      const linkedInfo = linkedParts.length > 0 ? ` / ${linkedParts.join(' + ')}` : '';
       // 未紐付け会議が増えたら誘導
-      const needsManualLinking = (result.synced ?? 0) > 0 && (result.autoLinked ?? 0) < (result.synced ?? 0);
+      const totalLinked = (result.autoLinked ?? 0) + (result.autoCreated ?? 0);
+      const needsManualLinking = (result.synced ?? 0) > 0 && totalLinked < (result.synced ?? 0);
 
       setShowUnlinkedHint(needsManualLinking);
 

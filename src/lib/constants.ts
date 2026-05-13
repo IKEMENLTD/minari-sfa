@@ -11,10 +11,14 @@ import type { DealPhase, DealProbability } from '@/types';
 export const AUTO_LINK_SKIP_LABEL: Record<string, string> = {
   no_participants: '参加者情報なし',
   no_parsed: '名前パース不可',
-  no_name_match: 'コンタクト未登録 → 新規作成して紐付け',
+  no_name_match_no_company: 'コンタクト未登録 + 会社名抽出不可 → 手動選択推奨',
   ambiguous_no_company: '同名複数あり(会社名不明) → 手動選択',
-  company_mismatch: '同名あるが会社名不一致 → 会社名追加 or 新規作成',
   company_normalize_empty: '会社名正規化後が空 → 元データ確認',
+  all_internal_or_noise: '自社メンバー or ノイズのみ',
+  admin_not_found: 'admin ユーザー未設定 → users seed 確認',
+  // 旧理由(後方互換)
+  no_name_match: 'コンタクト未登録 → 新規作成して紐付け',
+  company_mismatch: '同名あるが会社名不一致 → 会社名追加 or 新規作成',
 };
 
 export interface PhaseDefinition {
