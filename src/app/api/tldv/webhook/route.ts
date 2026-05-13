@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { fetchTranscript } from '@/lib/external/tldv';
+import { invokeSummarizeBackground } from '@/lib/netlify/background';
 import { processMeetingSummary } from '@/lib/process-meeting-summary';
 import { autoLinkContactToMeeting } from '@/lib/auto-link-contacts';
 import { decryptSetting, isEncryptedValue } from '@/lib/crypto/settings-cipher';
@@ -199,20 +200,30 @@ export async function POST(
 
           // transcript保存成功 + summaryが無い → Background Functionで要約
           if (!existingSummary || existingSummary.length === 0) {
-            // 失敗してもwebhook自体は202で返すべきなので catch
-            void processMeetingSummary(existingMeetingId).catch((e) => {
-              console.error('[webhook] inline summarize failed:', e instanceof Error ? e.message : e);
-            });
+            // PhaseS: BG優先 → 失敗時 inline fire-and-forget
+            try {
+              await invokeSummarizeBackground(existingMeetingId);
+            } catch (bgErr) {
+              console.warn('[webhook] BG失敗、inline へ:', bgErr instanceof Error ? bgErr.message : bgErr);
+              void processMeetingSummary(existingMeetingId).catch((e) => {
+                console.error('[webhook] inline summarize failed:', e instanceof Error ? e.message : e);
+              });
+            }
           }
         } catch (transcriptErr) {
           console.warn('Webhook冪等処理: 文字起こしの取得に失敗しました:', transcriptErr instanceof Error ? transcriptErr.message : transcriptErr);
         }
       } else if (existingTranscript && existingTranscript.length > 0 && (!existingSummary || existingSummary.length === 0)) {
         // transcriptはあるがsummaryがない場合 → Background Functionで要約
-        // 失敗してもwebhook自体は202で返すべきなので catch
-            void processMeetingSummary(existingMeetingId).catch((e) => {
-              console.error('[webhook] inline summarize failed:', e instanceof Error ? e.message : e);
-            });
+        // PhaseS: BG優先 → 失敗時 inline fire-and-forget
+            try {
+              await invokeSummarizeBackground(existingMeetingId);
+            } catch (bgErr) {
+              console.warn('[webhook] BG失敗、inline へ:', bgErr instanceof Error ? bgErr.message : bgErr);
+              void processMeetingSummary(existingMeetingId).catch((e) => {
+                console.error('[webhook] inline summarize failed:', e instanceof Error ? e.message : e);
+              });
+            }
       }
 
       return NextResponse.json({
@@ -292,9 +303,14 @@ export async function POST(
         }
 
         // 文字起こし保存成功 → Background Functionで要約を非同期生成
-        void processMeetingSummary(meeting.id as string).catch((e) => {
-          console.error('[webhook] inline summarize failed:', e instanceof Error ? e.message : e);
-        });
+        try {
+          await invokeSummarizeBackground(meeting.id as string);
+        } catch (bgErr) {
+          console.warn('[webhook] BG失敗、inline へ:', bgErr instanceof Error ? bgErr.message : bgErr);
+          void processMeetingSummary(meeting.id as string).catch((e) => {
+            console.error('[webhook] inline summarize failed:', e instanceof Error ? e.message : e);
+          });
+        }
       }
     } catch (transcriptErr) {
       console.error('Webhook: 文字起こしの取得に失敗しました:', transcriptErr instanceof Error ? transcriptErr.message : transcriptErr);

@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateAuth, isAuthError, requireRole } from '@/lib/auth';
+import { invokeSummarizeBackground } from '@/lib/netlify/background';
 import { processMeetingSummary } from '@/lib/process-meeting-summary';
 import type { ApiResult } from '@/types';
-
-// このルートは AI要約処理を直接実行する(Netlify Functions paid 120秒以内に完了想定)
-export const maxDuration = 120;
 
 const uuidSchema = z.string().uuid();
 
@@ -62,26 +60,46 @@ export async function POST(
       }
     }
 
-    // PhaseR: Netlify Functions sync timeout(26秒)対策で fire-and-forget。
-    // 結果は job_logs / summaries への DB 書込で確認。UI 側で polling。
-    void processMeetingSummary(id).catch((err) => {
-      const msg = err instanceof Error ? err.message : 'AI要約処理に失敗';
-      console.error('[summarize] async実行失敗:', msg);
-      // job_logs 書込も best-effort
-      void createServerSupabaseClient()
-        .from('job_logs')
-        .insert({
-          job_type: 'summarize',
-          meeting_id: id,
-          status: 'async_error',
-          message: msg.substring(0, 2000),
-        })
-        .then(() => {}, () => {});
-    });
+    // PhaseS: Background Function 優先(Sonnetで15分まで可)、失敗時 inline fallback
+    // 1) BG function 試行
+    let backgrounded = false;
+    try {
+      await invokeSummarizeBackground(id);
+      backgrounded = true;
+    } catch (bgErr) {
+      const msg = bgErr instanceof Error ? bgErr.message : 'BG関数失敗';
+      console.warn('[summarize] BG関数失敗、inline fallback へ:', msg);
+      await supabase.from('job_logs').insert({
+        job_type: 'summarize',
+        meeting_id: id,
+        status: 'bg_fallback',
+        message: msg.substring(0, 2000),
+      }).then(() => {}, () => {});
 
-    // 即時 202 返却 — ユーザーは UI で完了を polling
+      // 2) Inline fire-and-forget(26秒 sync timeout 対策で response は待たない)
+      void processMeetingSummary(id).catch((err) => {
+        const inlineMsg = err instanceof Error ? err.message : 'inline実行失敗';
+        console.error('[summarize] inline実行失敗:', inlineMsg);
+        void createServerSupabaseClient()
+          .from('job_logs')
+          .insert({
+            job_type: 'summarize',
+            meeting_id: id,
+            status: 'async_error',
+            message: inlineMsg.substring(0, 2000),
+          })
+          .then(() => {}, () => {});
+      });
+    }
+
     return NextResponse.json({
-      data: { queued: true, message: 'AI要約をバックグラウンド実行で開始しました' },
+      data: {
+        queued: true,
+        backgrounded,
+        message: backgrounded
+          ? 'Background Function で要約処理を開始(最大15分)'
+          : 'Inline fire-and-forget で要約処理を開始(26秒以内に完了想定)',
+      },
       error: null,
     });
   } catch (err) {

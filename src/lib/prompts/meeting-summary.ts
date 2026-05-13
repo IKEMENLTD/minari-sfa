@@ -4,9 +4,9 @@ import { z } from 'zod';
 // Claude モデル定数
 // ---------------------------------------------------------------------------
 
-// Netlify Functions sync timeout(26秒)対策で haiku を使用
-// 議事録要約は精度よりレイテンシ優先
-export const CLAUDE_SONNET = 'claude-haiku-4-5-20251001';
+// PhaseS: 高品質要約のため Sonnet 4.6 復活
+// 長い処理は Background Function (15分まで実行可) で動かす
+export const CLAUDE_SONNET = 'claude-sonnet-4-6';
 
 // ---------------------------------------------------------------------------
 // 会議要約プロンプト（APIルート 共通）

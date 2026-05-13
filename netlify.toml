@@ -12,13 +12,10 @@
   node_bundler = "esbuild"
   external_node_modules = ["@supabase/supabase-js"]
 
-# Next.js API Routeのタイムアウトを延長（AI要約生成に120秒必要）
+# 通常 functions の timeout (sync max 26秒, Background Function は最大15分で別系統)
 [functions."*"]
-  execution_timeout = 120
+  execution_timeout = 26
 
-# Next.jsプラグインが /.netlify/functions/* パスを横取りしないよう除外設定
-[[redirects]]
-  from = "/.netlify/functions/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
-  force = true
+# Background Function は -background サフィックスで自動認識、15分まで実行可
+# PhaseS: 旧 [[redirects]] (identity rewrite) は plugin と競合して 405 を引き起こすため削除
+# Netlify plugin の default routing で /.netlify/functions/<name> → 関数本体に到達する
