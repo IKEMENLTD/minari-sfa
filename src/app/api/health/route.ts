@@ -22,6 +22,9 @@ interface HealthCheck {
     tldv_api_key: 'env' | 'db_encrypted' | 'db_plaintext' | 'missing';
     /** seed users 3名 */
     users_seeded: boolean;
+    /** Background Function 実機接続テスト(?ping=bg 時のみ) */
+    bg_function_reachable?: 'ok' | 'auth_fail' | 'network_fail' | 'not_tested';
+    bg_function_message?: string;
   };
   /** 詳細ガイダンス(admin 向け) */
   issues: string[];
@@ -54,6 +57,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
     claude_api_key: 'missing',
     tldv_api_key: 'missing',
     users_seeded: false,
+    bg_function_reachable: 'not_tested',
   };
   if (process.env.BACKGROUND_FUNCTION_SECRET) checks.background_secret = 'env';
   const issues: string[] = [];
@@ -123,6 +127,52 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
       issues.push('SETTINGS_ENCRYPTION_KEY が未設定 — UI から API キーを保存する場合に暗号化されません(現状は env で動作中なので任意)。');
     }
     // env で全部足りている場合は何も追加しない(不要)
+  }
+
+  // Background Function 実機接続テスト(オプション、?ping=bg時のみ)
+  if (new URL(request.url).searchParams.get('ping') === 'bg') {
+    try {
+      const siteUrl = process.env.URL ?? process.env.NEXT_PUBLIC_BASE_URL ?? '';
+      if (!siteUrl) {
+        checks.bg_function_reachable = 'network_fail';
+        checks.bg_function_message = 'siteUrl 取得失敗(URL/NEXT_PUBLIC_BASE_URL env 未設定)';
+      } else {
+        const bgUrl = `${siteUrl}/.netlify/functions/summarize-meeting-background`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        try {
+          const res = await fetch(bgUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-background-secret': process.env.BACKGROUND_FUNCTION_SECRET ?? 'invalid-test',
+            },
+            body: JSON.stringify({ meeting_id: '00000000-0000-0000-0000-000000000000' }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          // 202 = BG受理、404 = transcript無し(正常)、401 = secret不一致、500 = BG関数エラー
+          if (res.status === 202 || res.status === 404) {
+            checks.bg_function_reachable = 'ok';
+            checks.bg_function_message = `status=${res.status} (BG function 到達OK)`;
+          } else if (res.status === 401) {
+            checks.bg_function_reachable = 'auth_fail';
+            checks.bg_function_message = 'BG function 認証失敗(BACKGROUND_FUNCTION_SECRET 不一致)';
+          } else {
+            checks.bg_function_reachable = 'network_fail';
+            const body = await res.text().catch(() => '');
+            checks.bg_function_message = `status=${res.status} body=${body.substring(0, 200)}`;
+          }
+        } catch (fetchErr) {
+          clearTimeout(timeoutId);
+          checks.bg_function_reachable = 'network_fail';
+          checks.bg_function_message = fetchErr instanceof Error ? fetchErr.message : 'fetch失敗';
+        }
+      }
+    } catch (e) {
+      checks.bg_function_reachable = 'network_fail';
+      checks.bg_function_message = e instanceof Error ? e.message : 'unknown';
+    }
   }
 
   // ok判定: SETTINGS_ENCRYPTION_KEY は ok 判定から除外(env運用で動作可能なため)

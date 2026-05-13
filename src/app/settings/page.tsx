@@ -170,6 +170,8 @@ interface HealthData {
     claude_api_key: ApiKeyState;
     tldv_api_key: ApiKeyState;
     users_seeded: boolean;
+    bg_function_reachable?: 'ok' | 'auth_fail' | 'network_fail' | 'not_tested';
+    bg_function_message?: string;
   };
   issues: string[];
 }
@@ -215,10 +217,11 @@ export default function SettingsPage() {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
 
-  const fetchHealth = useCallback(async () => {
+  const fetchHealth = useCallback(async (withBgPing = false) => {
     setHealthLoading(true);
     try {
-      const res = await fetch('/api/health');
+      const url = withBgPing ? '/api/health?ping=bg' : '/api/health';
+      const res = await fetch(url);
       const json = await res.json();
       if (json.data) setHealth(json.data as HealthData);
     } catch (err) {
@@ -376,14 +379,25 @@ export default function SettingsPage() {
                   </>
                 )}
               </h2>
-              <button
-                type="button"
-                onClick={() => { void fetchHealth(); }}
-                disabled={healthLoading}
-                className="text-xs text-accent hover:underline disabled:opacity-50"
-              >
-                {healthLoading ? '確認中...' : '再確認'}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => { void fetchHealth(false); }}
+                  disabled={healthLoading}
+                  className="text-xs text-accent hover:underline disabled:opacity-50"
+                >
+                  {healthLoading ? '確認中...' : '再確認'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void fetchHealth(true); }}
+                  disabled={healthLoading}
+                  className="text-xs text-accent hover:underline disabled:opacity-50"
+                  title="Background Function に接続テストを実行(8秒以内に応答)"
+                >
+                  {healthLoading ? '...' : 'BG関数接続テスト'}
+                </button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -412,6 +426,25 @@ export default function SettingsPage() {
                     <li key={i}>{iss}</li>
                   ))}
                 </ul>
+              </div>
+            )}
+            {/* BG関数接続テスト結果 */}
+            {health.checks.bg_function_reachable && health.checks.bg_function_reachable !== 'not_tested' && (
+              <div className={`mt-3 rounded-md border px-3 py-2 ${
+                health.checks.bg_function_reachable === 'ok'
+                  ? 'border-green-500/40 bg-green-500/10'
+                  : 'border-red-500/40 bg-red-500/10'
+              }`}>
+                <p className="text-xs font-medium">
+                  {health.checks.bg_function_reachable === 'ok' && '✅ BG関数接続OK'}
+                  {health.checks.bg_function_reachable === 'auth_fail' && '❌ BG関数 認証失敗(secret不一致)'}
+                  {health.checks.bg_function_reachable === 'network_fail' && '❌ BG関数 接続失敗'}
+                </p>
+                {health.checks.bg_function_message && (
+                  <p className="text-[10px] text-text-secondary mt-1 break-all font-mono">
+                    {health.checks.bg_function_message}
+                  </p>
+                )}
               </div>
             )}
             <p className="text-[10px] text-text-secondary mt-3">

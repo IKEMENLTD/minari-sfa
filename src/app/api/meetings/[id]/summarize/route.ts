@@ -60,7 +60,27 @@ export async function POST(
     }
 
     // Background Functionで非同期実行
-    await invokeSummarizeBackground(id);
+    try {
+      await invokeSummarizeBackground(id);
+    } catch (invokeErr) {
+      const msg = invokeErr instanceof Error ? invokeErr.message : 'BG関数呼び出しに失敗';
+      console.error('[summarize] BG呼出失敗:', msg);
+      // job_logs にも記録(原因切り分け用)
+      try {
+        await supabase.from('job_logs').insert({
+          job_type: 'summarize',
+          meeting_id: id,
+          status: 'invoke_error',
+          message: msg.substring(0, 2000),
+        });
+      } catch (logErr) {
+        console.error('[summarize] job_log書込失敗:', logErr instanceof Error ? logErr.message : logErr);
+      }
+      return NextResponse.json(
+        { data: null, error: `Background Function呼び出しに失敗: ${msg}` },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({ data: { queued: true }, error: null });
   } catch (err) {
