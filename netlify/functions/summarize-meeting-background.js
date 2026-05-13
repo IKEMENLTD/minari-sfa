@@ -299,15 +299,7 @@ exports.handler = async function (event, context) {
   let meetingId = null;
 
   try {
-    // 認証: 共有シークレットによるヘッダー検証
-    const secret = event.headers["x-background-secret"];
-    const expectedSecret = process.env.BACKGROUND_FUNCTION_SECRET;
-    if (!expectedSecret || secret !== expectedSecret) {
-      console.error("Background Function: 認証失敗", { hasSecret: !!secret, hasExpected: !!expectedSecret });
-      return { statusCode: 401, body: "Unauthorized" };
-    }
-
-    // 環境変数チェック + app_settings(暗号化) フォールバック
+    // 環境変数チェック (Supabase接続キーは env-only)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     let claudeApiKey = process.env.CLAUDE_API_KEY;
@@ -315,6 +307,34 @@ exports.handler = async function (event, context) {
     if (!supabaseUrl || !supabaseKey) {
       console.error("Supabase 環境変数が設定されていません");
       return { statusCode: 500, body: "Supabase環境変数が未設定です" };
+    }
+
+    // 認証: BACKGROUND_FUNCTION_SECRET を env または app_settings (PhaseJ) から取得
+    const reqSecret = event.headers["x-background-secret"];
+    let expectedSecret = process.env.BACKGROUND_FUNCTION_SECRET;
+    if (!expectedSecret) {
+      try {
+        const tmpClient = createClient(supabaseUrl, supabaseKey, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+        const { data: secretRow } = await tmpClient
+          .from("app_settings")
+          .select("value")
+          .eq("key", "background_function_secret")
+          .single();
+        if (secretRow && secretRow.value) {
+          const raw = secretRow.value;
+          expectedSecret = (typeof raw === "string" && raw.startsWith("v1:"))
+            ? decryptSettingsValue(raw)
+            : raw;
+        }
+      } catch (e) {
+        console.warn("[bg] background_function_secret DB取得失敗:", e && e.message ? e.message : e);
+      }
+    }
+    if (!expectedSecret || reqSecret !== expectedSecret) {
+      console.error("Background Function: 認証失敗", { hasReqSecret: !!reqSecret, hasExpectedSecret: !!expectedSecret });
+      return { statusCode: 401, body: "Unauthorized" };
     }
 
     // env が無ければ app_settings から復号取得

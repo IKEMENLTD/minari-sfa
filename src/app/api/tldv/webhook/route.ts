@@ -4,8 +4,28 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { fetchTranscript } from '@/lib/external/tldv';
 import { invokeSummarizeBackground } from '@/lib/netlify/background';
 import { autoLinkContactToMeeting } from '@/lib/auto-link-contacts';
+import { decryptSetting, isEncryptedValue } from '@/lib/crypto/settings-cipher';
 import type { ApiResult } from '@/types';
 import crypto from 'crypto';
+
+/**
+ * webhook シークレットを env または DB から取得
+ */
+async function getWebhookSecret(): Promise<string | null> {
+  const envSecret = process.env.TLDV_WEBHOOK_SECRET;
+  if (envSecret) return envSecret;
+  try {
+    const supabase = createServerSupabaseClient();
+    const { data } = await supabase.from('app_settings').select('value').eq('key', 'tldv_webhook_secret').single();
+    if (data?.value) {
+      const raw = data.value as string;
+      return isEncryptedValue(raw) ? decryptSetting(raw) : raw;
+    }
+  } catch (err) {
+    console.error('webhook secret 取得失敗:', err instanceof Error ? err.message : err);
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Webhook ペイロード Zodスキーマ
@@ -85,11 +105,11 @@ export async function POST(
 ): Promise<NextResponse<ApiResult<{ processed: boolean }>>> {
   try {
     const rawBody = await request.text();
-    const webhookSecret = process.env.TLDV_WEBHOOK_SECRET;
+    const webhookSecret = await getWebhookSecret();
 
     // Webhookシークレット必須
     if (!webhookSecret) {
-      console.error('TLDV_WEBHOOK_SECRET が設定されていません');
+      console.error('TLDV_WEBHOOK_SECRET が env にも app_settings にも未設定');
       return NextResponse.json(
         { data: null, error: 'Webhookの設定に問題があります' },
         { status: 500 }

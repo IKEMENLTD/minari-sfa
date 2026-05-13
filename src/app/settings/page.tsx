@@ -33,7 +33,12 @@ const SETTING_FIELDS: SettingField[] = [
   {
     key: 'tldv_webhook_secret',
     label: 'TLDV Webhook Secret',
-    description: 'tl;dv Webhook の署名検証シークレット。',
+    description: 'tl;dv Webhook の署名検証シークレット(tl;dv側と同値)。',
+  },
+  {
+    key: 'background_function_secret',
+    label: 'Background Function Secret',
+    description: 'AI要約 Background Function 認証用シークレット(自動生成: 32バイトhex)。',
   },
 ];
 
@@ -160,7 +165,7 @@ interface HealthData {
   checks: {
     supabase: boolean;
     auth_secret: boolean;
-    background_secret: boolean;
+    background_secret: ApiKeyState;
     settings_encryption: boolean;
     claude_api_key: ApiKeyState;
     tldv_api_key: ApiKeyState;
@@ -385,7 +390,7 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-sm">
               <HealthRow label="Supabase 接続" state={health.checks.supabase ? 'good' : 'bad'} />
               <HealthRow label="認証署名鍵 (AUTH_HMAC_SECRET/SITE_PASSWORD)" state={health.checks.auth_secret ? 'good' : 'bad'} />
-              <HealthRow label="Background Function 認証鍵" state={health.checks.background_secret ? 'good' : 'bad'} />
+              <HealthRow label={`Background Function 認証鍵: ${KEY_STATE_LABEL[health.checks.background_secret].label}`} state={KEY_STATE_LABEL[health.checks.background_secret].tone} bare />
               <HealthRow label="Settings 暗号化 master key" state={health.checks.settings_encryption ? 'good' : 'bad'} />
               <HealthRow label="ユーザー seed 適用済" state={health.checks.users_seeded ? 'good' : 'bad'} />
               <HealthRow label={`Claude API key: ${KEY_STATE_LABEL[health.checks.claude_api_key].label}`} state={KEY_STATE_LABEL[health.checks.claude_api_key].tone} bare />

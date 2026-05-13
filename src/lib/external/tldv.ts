@@ -1,4 +1,6 @@
 import { TLDV_API_TIMEOUT_MS } from '@/lib/constants';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { decryptSetting, isEncryptedValue } from '@/lib/crypto/settings-cipher';
 import type { TldvMeeting, TldvTranscript } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -13,12 +15,39 @@ const TLDV_BASE_URL = 'https://pasta.tldv.io/v1alpha1';
 const MAX_RETRIES = 2; // 短縮: Netlify sync function 10秒制約に合わせる
 const RETRY_BASE_DELAY_MS = 250; // 0.25 → 0.5 → 1.0 で最悪1.75秒
 
-function getApiKey(): string {
-  const key = process.env.TLDV_API_KEY;
-  if (!key) {
-    throw new Error('環境変数 TLDV_API_KEY が設定されていません');
+// API キーキャッシュ(関数インスタンス内で1回だけ取得)
+let _cachedTldvApiKey: string | null = null;
+
+/**
+ * TLDV API キーを取得する:
+ *   1. env `TLDV_API_KEY` を優先
+ *   2. 無ければ app_settings の `tldv_api_key` を復号して取得
+ */
+async function getApiKey(): Promise<string> {
+  if (_cachedTldvApiKey) return _cachedTldvApiKey;
+  const envKey = process.env.TLDV_API_KEY;
+  if (envKey) {
+    _cachedTldvApiKey = envKey;
+    return envKey;
   }
-  return key;
+  // DB fallback
+  try {
+    const supabase = createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'tldv_api_key')
+      .single();
+    if (error || !data?.value) {
+      throw new Error('TLDV_API_KEY が env にも app_settings にも未設定です');
+    }
+    const raw = data.value as string;
+    const plain = isEncryptedValue(raw) ? decryptSetting(raw) : raw;
+    _cachedTldvApiKey = plain;
+    return plain;
+  } catch (err) {
+    throw new Error(`TLDV API キー取得失敗: ${err instanceof Error ? err.message : 'unknown'}`);
+  }
 }
 
 function isRetryableStatus(status: number): boolean {
@@ -40,9 +69,10 @@ async function tldvFetch(path: string, signal?: AbortSignal): Promise<Response> 
   let lastError: unknown;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      const apiKey = await getApiKey();
       const response = await fetch(`${TLDV_BASE_URL}${path}`, {
         headers: {
-          'x-api-key': getApiKey(),
+          'x-api-key': apiKey,
           'Content-Type': 'application/json',
         },
         signal,

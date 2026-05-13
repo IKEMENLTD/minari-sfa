@@ -21,11 +21,12 @@
 //       UI から設定可能。詳細は `src/lib/crypto/settings-cipher.ts` の ENCRYPTABLE_KEYS。
 // =============================================================================
 export const ENV_ONLY_KEYS: readonly string[] = [
-  'supabase_service_role_key',
-  'site_password',
-  'auth_hmac_secret',
-  'background_function_secret',
-  'settings_encryption_key', // master key 自体は env のみ(自己参照防止)
+  // 真に env でしか設定できないもの(チキンエッグ or 認証層)
+  'supabase_service_role_key', // DB接続自体に必要 — チキンエッグ
+  'site_password',             // ログイン認証層 — DB読む前に必要
+  'auth_hmac_secret',          // Edge middleware で毎リクエスト使用 — DB遅延不可
+  'settings_encryption_key',   // 他キーを暗号化する master — 自己参照防止
+  // background_function_secret は PhaseJ で UI設定化(ENCRYPTABLE_KEYS 側へ移動)
 ] as const;
 
 /**

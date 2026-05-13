@@ -96,6 +96,7 @@ export const ENCRYPTABLE_KEYS: readonly string[] = [
   'claude_api_key',
   'tldv_api_key',
   'tldv_webhook_secret',
+  'background_function_secret', // PhaseJ: UI設定可能化
 ] as const;
 
 export function isEncryptableKey(key: string): boolean {
