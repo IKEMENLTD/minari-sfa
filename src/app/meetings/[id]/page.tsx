@@ -132,6 +132,8 @@ export default function MeetingDetailPage() {
   // AI要約生成
   const [summarizing, setSummarizing] = useState(false);
   const [summarizeMsg, setSummarizeMsg] = useState<string | null>(null);
+  // 401 (Claude APIキー無効) 専用フラグ
+  const [claudeKey401, setClaudeKey401] = useState(false);
 
   // コピー状態
   const [copiedSummary, setCopiedSummary] = useState(false);
@@ -499,6 +501,7 @@ export default function MeetingDetailPage() {
   const handleSummarize = async (force: boolean) => {
     setSummarizing(true);
     setSummarizeMsg('AI要約の生成をリクエスト中...');
+    setClaudeKey401(false);
     try {
       const url = `/api/meetings/${id}/summarize${force ? '?force=true' : ''}`;
       const res = await fetch(url, {
@@ -507,16 +510,21 @@ export default function MeetingDetailPage() {
       });
       const json = await res.json();
       if (!res.ok || json.error) {
-        // 500 系: 設定不足の可能性高い → /settings へ誘導
         const base = json.error ?? 'AI要約の生成に失敗しました';
-        const isConfigError = res.status >= 500 || /api.?key|設定|secret|hmac/i.test(base);
-        setSummarizeMsg(
-          isConfigError
-            ? `${base}\n→ 「設定」画面でAPIキー/環境変数の状態を確認してください`
-            : base
-        );
+        // Claude API 401 を検出 → 専用バナー表示
+        if (/Claude.*401|401.*Claude/i.test(base)) {
+          setClaudeKey401(true);
+          setSummarizeMsg(null);
+        } else {
+          const isConfigError = res.status >= 500 || /api.?key|設定|secret|hmac/i.test(base);
+          setSummarizeMsg(
+            isConfigError
+              ? `${base}\n→ 「設定」画面でAPIキー/環境変数の状態を確認してください`
+              : base
+          );
+          setTimeout(() => setSummarizeMsg(null), 15000);
+        }
         setSummarizing(false);
-        setTimeout(() => setSummarizeMsg(null), 15000);
         return;
       }
 
@@ -572,6 +580,50 @@ export default function MeetingDetailPage() {
           {meeting.title || new Date(meeting.meeting_date).toLocaleDateString('ja-JP')}
         </span>
       </nav>
+
+      {/* Claude API キー無効バナー(PhaseO) */}
+      {claudeKey401 && (
+        <div className="rounded-lg border-2 border-red-500/50 bg-red-500/10 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-6 w-6 text-red-500 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base font-bold text-red-500">Claude API キーが無効です(401)</h3>
+              <p className="text-sm text-text mt-1">
+                Anthropic 側でキーが <strong>revoke / 期限切れ / credit残高0</strong> のいずれかです。
+                AI要約は新しいキー発行で再開できます。
+              </p>
+              <ol className="list-decimal list-inside text-sm text-text mt-3 space-y-1">
+                <li>
+                  <a
+                    href="https://console.anthropic.com/settings/keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline font-medium"
+                  >
+                    Anthropic Console
+                  </a>{' '}
+                  で新キーを発行(クレジット残高も確認)
+                </li>
+                <li>
+                  <Link href="/settings" className="text-accent underline font-medium">
+                    設定画面
+                  </Link>{' '}
+                  → 「Claude API Key」欄に貼り付けて保存
+                </li>
+                <li>「🔑 Claudeキー検証」ボタンで ✅ になることを確認</li>
+                <li>このページに戻って「AI要約を生成」を再実行</li>
+              </ol>
+              <button
+                type="button"
+                onClick={() => setClaudeKey401(false)}
+                className="mt-3 text-xs text-text-secondary underline hover:text-text"
+              >
+                このメッセージを閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ヘッダー情報 */}
       <div className="flex items-start gap-4">
