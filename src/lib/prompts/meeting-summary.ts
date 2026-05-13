@@ -95,6 +95,19 @@ export const MEETING_SUMMARY_PROMPT = `あなたは営業会議の議事録か�
 - 営業同士で見ても何の案件か即座に分かる粒度に
 - 単なる雑談・既存案件のフォローのみ等で新規案件化が不要なら null
 
+## temperatureSignalフィールド (相手の温度感判定)
+- "positive": 前向き(「いいですね」「やりたい」「進めましょう」等の発言、具体検討、見積依頼など)
+- "neutral":  中立(雑談・情報収集中・はっきりしない)
+- "negative": 後ろ向き(「予算合わない」「今は難しい」「他社で検討」等の否定的発言)
+- 判定根拠が無い/不明なら null
+- 1会議に1判定。複数の発言を総合して判断する
+
+## mentionedRevenueRangeフィールド
+- 議事録中に金額の言及があった場合、推定レンジを文字列で記述
+- 例: "300万〜500万円", "月額10万円〜", "100万円程度"
+- 言及無しは null
+- 数値は議事録の発言ベースで、こちらから推測しない
+
 ## 回答形式
 以下のJSON形式のみ出力（コードブロックで囲まないこと）:
 {
@@ -103,7 +116,9 @@ export const MEETING_SUMMARY_PROMPT = `あなたは営業会議の議事録か�
   "participants": [...],
   "suggestedNextAction": "..." or null,
   "suggestedNextActionDate": "YYYY-MM-DD" or null,
-  "suggestedDealTitle": "..." or null
+  "suggestedDealTitle": "..." or null,
+  "temperatureSignal": "positive" | "neutral" | "negative" | null,
+  "mentionedRevenueRange": "..." or null
 }`;
 
 // ---------------------------------------------------------------------------
@@ -118,4 +133,7 @@ export const meetingSummarySchema = z.object({
   suggestedNextActionDate: z.string().nullable(),
   // 案件名は500文字制限+HTMLタグ除去で prompt injection 対策
   suggestedDealTitle: z.string().max(500).transform((s) => s.replace(/<[^>]*>/g, '')).nullish(),
+  // PhaseE: AI観察追記用
+  temperatureSignal: z.enum(['positive', 'neutral', 'negative']).nullish(),
+  mentionedRevenueRange: z.string().max(200).transform((s) => s.replace(/<[^>]*>/g, '')).nullish(),
 }).strict();

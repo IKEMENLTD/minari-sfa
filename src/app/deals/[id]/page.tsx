@@ -34,6 +34,7 @@ import {
   TOOL_LABEL,
   ACTION_DATE_SHORTCUTS,
 } from '@/lib/constants';
+import { extractAiObservations, removeAiObservation } from '@/lib/ai-observation';
 import type {
   DealWithContact,
   DealPhase,
@@ -330,6 +331,53 @@ export default function DealDetailPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* AI観察履歴 (PhaseE: status_detail + revenue_note から抽出) */}
+          {(() => {
+            const obs = [
+              ...extractAiObservations(statusDetail).map(o => ({ ...o, field: 'status_detail' as const })),
+              ...extractAiObservations(revenueNote).map(o => ({ ...o, field: 'revenue_note' as const })),
+            ];
+            if (obs.length === 0) return null;
+            return (
+              <Card className="border-accent/30 bg-accent/5">
+                <CardHeader>
+                  <h2 className="text-sm font-semibold text-accent flex items-center gap-2">
+                    ✨ AI観察履歴 <span className="text-xs text-text-secondary font-normal">({obs.length}件)</span>
+                  </h2>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {obs.map((o, idx) => (
+                    <div key={idx} className="flex items-start justify-between gap-2 text-xs">
+                      <div className="flex-1">
+                        <span className="text-text-secondary">{o.date}</span>{' '}
+                        <span className="text-text">{o.label}=</span>
+                        <span className="text-accent">{o.value}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (o.field === 'status_detail') {
+                            setStatusDetail(removeAiObservation(statusDetail, o.raw));
+                          } else {
+                            setRevenueNote(removeAiObservation(revenueNote, o.raw));
+                          }
+                          setIsDirty(true);
+                        }}
+                        className="text-xs text-red-400 hover:text-red-500 underline shrink-0"
+                        title="このAI観察を削除(保存時に確定)"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-text-secondary mt-2">
+                    削除した内容は「保存」ボタン押下時に確定します。AI観察は人手記入と区別され、削除しても他のメモは保持されます。
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* 基本情報（常に表示） */}
           <Card>

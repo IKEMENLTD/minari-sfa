@@ -313,6 +313,10 @@ export interface MeetingSummaryResult {
   suggestedNextAction: string | null;
   suggestedNextActionDate: string | null;
   suggestedDealTitle?: string | null;
+  /** PhaseE: AI観察 — 相手の温度感 */
+  temperatureSignal?: 'positive' | 'neutral' | 'negative' | null;
+  /** PhaseE: AI観察 — 議事録中の金額言及レンジ(文字列) */
+  mentionedRevenueRange?: string | null;
 }
 
 // ---------------------------------------------------------------------------

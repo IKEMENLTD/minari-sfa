@@ -125,6 +125,16 @@ const MEETING_SUMMARY_PROMPT = `あなたは営業会議の議事録から詳細
 - 含めるべき要素: 顧客名/会社名 + 案件の内容 + 必要なら時期
 - 単なる雑談・既存案件のフォローのみ等で新規案件化が不要なら null
 
+## temperatureSignalフィールド
+- "positive": 前向き(「いいですね」「やりたい」「進めましょう」等)
+- "neutral":  中立(雑談・情報収集中)
+- "negative": 後ろ向き(「予算合わない」「今は難しい」「他社で検討」等)
+- 判定根拠なしは null
+
+## mentionedRevenueRangeフィールド
+- 議事録中に金額言及があれば文字列で(例: "300万〜500万円")
+- 無しは null
+
 ## 回答形式
 以下のJSON形式のみ出力（コードブロックで囲まないこと）:
 {
@@ -133,7 +143,9 @@ const MEETING_SUMMARY_PROMPT = `あなたは営業会議の議事録から詳細
   "participants": [...],
   "suggestedNextAction": "..." or null,
   "suggestedNextActionDate": "YYYY-MM-DD" or null,
-  "suggestedDealTitle": "..." or null
+  "suggestedDealTitle": "..." or null,
+  "temperatureSignal": "positive" | "neutral" | "negative" | null,
+  "mentionedRevenueRange": "..." or null
 }`;
 
 // ---------------------------------------------------------------------------
@@ -183,6 +195,16 @@ function validateSummaryResult(raw) {
   if (typeof raw.suggestedDealTitle === "string") {
     cleanedTitle = raw.suggestedDealTitle.replace(/<[^>]*>/g, "").slice(0, 500).trim() || null;
   }
+  // PhaseE: temperatureSignal sanitize
+  let tempSignal = null;
+  if (raw.temperatureSignal === "positive" || raw.temperatureSignal === "neutral" || raw.temperatureSignal === "negative") {
+    tempSignal = raw.temperatureSignal;
+  }
+  // PhaseE: mentionedRevenueRange sanitize
+  let revRange = null;
+  if (typeof raw.mentionedRevenueRange === "string") {
+    revRange = raw.mentionedRevenueRange.replace(/<[^>]*>/g, "").slice(0, 200).trim() || null;
+  }
   return {
     summary: raw.summary,
     estimatedContact: raw.estimatedContact,
@@ -190,6 +212,8 @@ function validateSummaryResult(raw) {
     suggestedNextAction: raw.suggestedNextAction || null,
     suggestedNextActionDate: raw.suggestedNextActionDate || null,
     suggestedDealTitle: cleanedTitle,
+    temperatureSignal: tempSignal,
+    mentionedRevenueRange: revRange,
   };
 }
 
@@ -546,6 +570,63 @@ exports.handler = async function (event, context) {
           const updatePayload = { next_action: result.suggestedNextAction };
           if (result.suggestedNextActionDate) updatePayload.next_action_date = result.suggestedNextActionDate;
           await supabase.from("deals").update(updatePayload).eq("id", linkedDealId);
+        }
+      }
+
+      // ===================================================================
+      // PhaseE: AI観察追記 (人判断を尊重しつつ補助情報のみ append)
+      //   - status_detail: 既存を尊重し AI観察ブロックを末尾に append
+      //   - revenue_note: 言及金額を AI観察ブロックで append (確定値は人)
+      //   - has_movement: positive 検出時のみ false→true の片方向自動更新
+      // ===================================================================
+      if (linkedDealId && (result.temperatureSignal || result.mentionedRevenueRange)) {
+        const { data: dealRow } = await supabase
+          .from("deals")
+          .select("status_detail, revenue_note, has_movement")
+          .eq("id", linkedDealId)
+          .single();
+        if (dealRow) {
+          const today = new Date().toISOString().slice(0, 10);
+          const update = {};
+
+          // 1. status_detail に温度感を append
+          if (result.temperatureSignal) {
+            const tempLabel = {
+              positive: "前向き",
+              neutral: "中立",
+              negative: "後ろ向き",
+            }[result.temperatureSignal] || result.temperatureSignal;
+            const block = `[AI観察 ${today}] 温度感=${tempLabel}`;
+            // 同日同種ブロックの重複append防止
+            const existingDetail = dealRow.status_detail || "";
+            if (!existingDetail.includes(`[AI観察 ${today}] 温度感`)) {
+              update.status_detail = existingDetail
+                ? `${existingDetail}\n${block}`
+                : block;
+            }
+          }
+
+          // 2. revenue_note に金額言及を append
+          if (result.mentionedRevenueRange) {
+            const block = `[AI観察 ${today}] 議事録言及金額: ${result.mentionedRevenueRange}`;
+            const existingRev = dealRow.revenue_note || "";
+            if (!existingRev.includes(`[AI観察 ${today}] 議事録言及金額`)) {
+              update.revenue_note = existingRev
+                ? `${existingRev}\n${block}`
+                : block;
+            }
+          }
+
+          // 3. has_movement の片方向自動更新 (positive 時のみ false→true)
+          //    AI が negative や中立にしても false に勝手に戻さない(人判断尊重)
+          if (result.temperatureSignal === "positive" && dealRow.has_movement === false) {
+            update.has_movement = true;
+          }
+
+          if (Object.keys(update).length > 0) {
+            await supabase.from("deals").update(update).eq("id", linkedDealId);
+            await logJob(supabase, meetingId, "deal_ai_observation_appended", `deal_id=${linkedDealId}`);
+          }
         }
       }
 
