@@ -107,32 +107,36 @@ export async function PATCH(request: NextRequest): Promise<NextResponse<ApiResul
       return NextResponse.json({ data: null, error: '入力値が不正です' }, { status: 400 });
     }
 
-    // env-only キーは DB 保存禁止
-    if (isEnvOnlyKey(parsed.data.key)) {
-      return NextResponse.json(
-        { data: null, error: 'このキーはセキュリティ上、画面からは保存できません(Netlify環境変数のみ)。' },
-        { status: 400 }
-      );
-    }
-
-    // _key/_secret 接尾辞で空値拒否
-    if ((parsed.data.key.endsWith('_key') || parsed.data.key.endsWith('_secret')) && !parsed.data.value.trim()) {
-      return NextResponse.json({ data: null, error: 'APIキー/シークレットは空にできません' }, { status: 400 });
-    }
-
-    // 暗号化対象なら encrypt
+    // ⚠️ 評価順が重要:
+    //   1) ENCRYPTABLE_KEYS (claude_api_key 等) → 暗号化保存OK
+    //   2) ENV_ONLY_KEYS (auth_hmac_secret 等) → 400 拒否
+    //   3) SECRET_LIKE_PATTERNS (`_api_key$` 等) → 400 拒否
+    //  claude_api_key は `_api_key$` パターンに合致するが、ENCRYPTABLE_KEYS で先に救う設計。
     let storedValue = parsed.data.value;
     if (isEncryptableKey(parsed.data.key)) {
+      // 暗号化対象 — 空値拒否は先に
+      if (!parsed.data.value.trim()) {
+        return NextResponse.json({ data: null, error: 'APIキー/シークレットは空にできません' }, { status: 400 });
+      }
       try {
         storedValue = encryptSetting(parsed.data.value);
       } catch (e) {
         const msg = e instanceof Error ? e.message : '暗号化に失敗しました';
         console.error('暗号化失敗:', msg);
         return NextResponse.json(
-          { data: null, error: `暗号化に失敗しました: ${msg}` },
+          { data: null, error: `暗号化に失敗しました: ${msg}(SETTINGS_ENCRYPTION_KEY 未設定の可能性)` },
           { status: 500 }
         );
       }
+    } else if (isEnvOnlyKey(parsed.data.key)) {
+      // env-only(SECRET_LIKE_PATTERNS含む)で encryptable でない → 拒否
+      return NextResponse.json(
+        { data: null, error: 'このキーはセキュリティ上、画面からは保存できません(Netlify環境変数のみ)。' },
+        { status: 400 }
+      );
+    } else if ((parsed.data.key.endsWith('_key') || parsed.data.key.endsWith('_secret')) && !parsed.data.value.trim()) {
+      // 通常キーでも _key/_secret 接尾辞は空値拒否
+      return NextResponse.json({ data: null, error: 'APIキー/シークレットは空にできません' }, { status: 400 });
     }
 
     const supabase = createServerSupabaseClient();
