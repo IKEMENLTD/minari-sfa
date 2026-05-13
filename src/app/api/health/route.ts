@@ -18,8 +18,12 @@ interface HealthCheck {
     settings_encryption: boolean;
     /** Claude API key (env or DB暗号化) */
     claude_api_key: 'env' | 'db_encrypted' | 'db_plaintext' | 'missing';
+    /** Claude key の DB保存(env と DB 両方あり判定用) */
+    claude_api_key_has_db?: boolean;
     /** TLDV API key */
     tldv_api_key: 'env' | 'db_encrypted' | 'db_plaintext' | 'missing';
+    /** TLDV key の DB保存 */
+    tldv_api_key_has_db?: boolean;
     /** seed users 3名 */
     users_seeded: boolean;
     /** Background Function 実機接続テスト(?ping=bg 時のみ) */
@@ -88,10 +92,12 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
     };
 
     const claudeRow = cfg('claude_api_key');
+    checks.claude_api_key_has_db = !!claudeRow?.value;
     if (process.env.CLAUDE_API_KEY) checks.claude_api_key = 'env';
     else checks.claude_api_key = stateFromValue(claudeRow?.value as string | undefined);
 
     const tldvRow = cfg('tldv_api_key');
+    checks.tldv_api_key_has_db = !!tldvRow?.value;
     if (process.env.TLDV_API_KEY) checks.tldv_api_key = 'env';
     else checks.tldv_api_key = stateFromValue(tldvRow?.value as string | undefined);
 
@@ -112,6 +118,14 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiResult<
   if (checks.claude_api_key === 'db_plaintext') issues.push('Claude API key が平文DB保存 — /settings から再保存すると暗号化されます(SETTINGS_ENCRYPTION_KEY が必要)。');
   if (checks.tldv_api_key === 'missing') issues.push('TLDV API key が未設定 — /settings から登録してください。');
   if (checks.tldv_api_key === 'db_plaintext') issues.push('TLDV API key が平文DB保存 — /settings から再保存すると暗号化されます(SETTINGS_ENCRYPTION_KEY が必要)。');
+
+  // env + DB の衝突: env が優先されるため DB保存値は **使われない**
+  if (checks.claude_api_key === 'env' && checks.claude_api_key_has_db) {
+    issues.push('⚠️ Claude API key: env と DB 両方に保存されています。env が優先されるため /settings で保存した値は使われません。env を更新する(or env を削除して UI 運用)のどちらかで対応してください。');
+  }
+  if (checks.tldv_api_key === 'env' && checks.tldv_api_key_has_db) {
+    issues.push('⚠️ TLDV API key: env と DB 両方に保存されています。env が優先されるため /settings で保存した値は使われません。');
+  }
 
   // SETTINGS_ENCRYPTION_KEY は env 運用の場合は不要。
   // 全 operational secret が env から読まれている時のみ「情報」レベルで案内。

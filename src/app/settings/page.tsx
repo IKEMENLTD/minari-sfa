@@ -168,7 +168,9 @@ interface HealthData {
     background_secret: ApiKeyState;
     settings_encryption: boolean;
     claude_api_key: ApiKeyState;
+    claude_api_key_has_db?: boolean;
     tldv_api_key: ApiKeyState;
+    tldv_api_key_has_db?: boolean;
     users_seeded: boolean;
     bg_function_reachable?: 'ok' | 'auth_fail' | 'network_fail' | 'not_tested';
     bg_function_message?: string;
@@ -539,6 +541,14 @@ ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;`}</pre>
                 const isVisible = visibility[field.key] ?? false;
                 const isSaving = saving[field.key] ?? false;
                 const fb = feedback[field.key];
+                // env 優先で DB値が使われない状態を検出
+                const envConflict =
+                  (field.key === 'claude_api_key' &&
+                    health?.checks.claude_api_key === 'env' &&
+                    health?.checks.claude_api_key_has_db) ||
+                  (field.key === 'tldv_api_key' &&
+                    health?.checks.tldv_api_key === 'env' &&
+                    health?.checks.tldv_api_key_has_db);
 
                 return (
                   <div key={field.key} className="space-y-2">
@@ -548,6 +558,12 @@ ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;`}</pre>
                       </label>
                       <p className="text-xs text-text-secondary">{field.description}</p>
                     </div>
+                    {envConflict && (
+                      <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-700">
+                        <p className="font-medium mb-1">⚠️ Netlify env が優先されています</p>
+                        <p>このキーは Netlify 環境変数に値があり、env が優先されるため <strong>UI で保存した値は使われていません</strong>。env のキーを更新するか、env を削除して UI 運用に切替えてください。</p>
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <input
