@@ -85,7 +85,7 @@ async function callClaude(
     },
     body: JSON.stringify({
       model: options?.model ?? CLAUDE_SONNET,
-      max_tokens: options?.maxTokens ?? 16384,
+      max_tokens: options?.maxTokens ?? 4096, // 16384→4096 (timeout 対策)
       temperature: options?.temperature ?? 1,
       system: systemPrompt,
       messages,
@@ -121,7 +121,8 @@ async function callClaude(
  * 長い議事録を要約可能なサイズに切り詰める。
  * 先頭と末尾を残し、中間を省略する。
  */
-function truncateTranscript(text: string, maxChars: number = 25000): string {
+// 25000 → 12000 文字に短縮 (haiku の input処理速度+ Netlify 26秒 sync timeout 対策)
+function truncateTranscript(text: string, maxChars: number = 12000): string {
   if (text.length <= maxChars) return text;
 
   const headSize = Math.floor(maxChars * 0.6); // 先頭60%

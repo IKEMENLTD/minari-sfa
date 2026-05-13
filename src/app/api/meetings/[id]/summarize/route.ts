@@ -62,45 +62,28 @@ export async function POST(
       }
     }
 
-    // 直接実行(PhaseM: BG関数廃止)
-    try {
-      const result = await processMeetingSummary(id);
-      if (result.status === 'error') {
-        return NextResponse.json(
-          { data: null, error: result.message },
-          { status: 500 },
-        );
-      }
-      return NextResponse.json({
-        data: {
-          queued: true,
-          status: result.status,
-          message: result.message,
-          summaryId: result.summaryId,
-          dealId: result.dealId,
-          dealCreated: result.dealCreated,
-          aiObservationAppended: result.aiObservationAppended,
-        },
-        error: null,
-      });
-    } catch (inlineErr) {
-      const msg = inlineErr instanceof Error ? inlineErr.message : 'AI要約処理に失敗';
-      console.error('[summarize] inline実行失敗:', msg);
-      try {
-        await supabase.from('job_logs').insert({
+    // PhaseR: Netlify Functions sync timeout(26秒)対策で fire-and-forget。
+    // 結果は job_logs / summaries への DB 書込で確認。UI 側で polling。
+    void processMeetingSummary(id).catch((err) => {
+      const msg = err instanceof Error ? err.message : 'AI要約処理に失敗';
+      console.error('[summarize] async実行失敗:', msg);
+      // job_logs 書込も best-effort
+      void createServerSupabaseClient()
+        .from('job_logs')
+        .insert({
           job_type: 'summarize',
           meeting_id: id,
-          status: 'invoke_error',
+          status: 'async_error',
           message: msg.substring(0, 2000),
-        });
-      } catch (logErr) {
-        console.error('[summarize] job_log書込失敗:', logErr instanceof Error ? logErr.message : logErr);
-      }
-      return NextResponse.json(
-        { data: null, error: `AI要約処理に失敗: ${msg}` },
-        { status: 500 },
-      );
-    }
+        })
+        .then(() => {}, () => {});
+    });
+
+    // 即時 202 返却 — ユーザーは UI で完了を polling
+    return NextResponse.json({
+      data: { queued: true, message: 'AI要約をバックグラウンド実行で開始しました' },
+      error: null,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : '要約リクエスト中にエラーが発生しました';
     console.error('[summarize] エラー:', msg);
