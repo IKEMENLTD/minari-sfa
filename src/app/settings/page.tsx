@@ -148,6 +148,51 @@ function ApiKeyGuide({ guideKey }: { guideKey: string }) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// ヘルスチェック型
+// ---------------------------------------------------------------------------
+
+type ApiKeyState = 'env' | 'db_encrypted' | 'db_plaintext' | 'missing';
+
+interface HealthData {
+  ok: boolean;
+  version: string;
+  checks: {
+    supabase: boolean;
+    auth_secret: boolean;
+    background_secret: boolean;
+    settings_encryption: boolean;
+    claude_api_key: ApiKeyState;
+    tldv_api_key: ApiKeyState;
+    users_seeded: boolean;
+  };
+  issues: string[];
+}
+
+const KEY_STATE_LABEL: Record<ApiKeyState, { label: string; tone: 'good' | 'warn' | 'bad' }> = {
+  env: { label: '✅ Netlify env', tone: 'good' },
+  db_encrypted: { label: '🔒 DB (暗号化)', tone: 'good' },
+  db_plaintext: { label: '⚠️ DB (平文 — 再保存推奨)', tone: 'warn' },
+  missing: { label: '❌ 未設定', tone: 'bad' },
+};
+
+function HealthRow({ label, state, bare = false }: { label: string; state: 'good' | 'warn' | 'bad'; bare?: boolean }) {
+  const dot = state === 'good' ? '●' : state === 'warn' ? '●' : '●';
+  const color =
+    state === 'good' ? 'text-green-500' : state === 'warn' ? 'text-yellow-500' : 'text-red-500';
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`text-xs ${color}`} aria-hidden>{dot}</span>
+      <span className="text-text">{label}</span>
+      {!bare && (
+        <span className={`text-xs ml-auto ${color}`}>
+          {state === 'good' ? 'OK' : state === 'warn' ? '注意' : 'NG'}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingItem[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -160,6 +205,23 @@ export default function SettingsPage() {
   const [dbWarning, setDbWarning] = useState<string | null>(null);
   const [fixLoading, setFixLoading] = useState(false);
   const [fixFeedback, setFixFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // ヘルスチェック
+  const [health, setHealth] = useState<HealthData | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+
+  const fetchHealth = useCallback(async () => {
+    setHealthLoading(true);
+    try {
+      const res = await fetch('/api/health');
+      const json = await res.json();
+      if (json.data) setHealth(json.data as HealthData);
+    } catch (err) {
+      console.error('health fetch failed:', err);
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -186,7 +248,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+    fetchHealth();
+  }, [fetchSettings, fetchHealth]);
 
   const handleSave = async (key: string) => {
     const value = values[key];
@@ -284,6 +347,61 @@ export default function SettingsPage() {
         <Settings className="h-6 w-6 text-accent" />
         <h1 className="text-xl font-bold text-text">設定</h1>
       </div>
+
+      {/* ヘルスチェック (PhaseG) */}
+      {health && (
+        <Card className={health.ok ? 'border-green-500/30 bg-green-500/5' : 'border-yellow-500/30 bg-yellow-500/5'}>
+          <CardHeader>
+            <div className="flex items-center justify-between w-full">
+              <h2 className="text-base font-semibold text-text flex items-center gap-2">
+                {health.ok ? (
+                  <>
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    システム動作状態: 正常
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-5 w-5 text-yellow-500" />
+                    システム動作状態: 設定不足あり
+                  </>
+                )}
+              </h2>
+              <button
+                type="button"
+                onClick={() => { void fetchHealth(); }}
+                disabled={healthLoading}
+                className="text-xs text-accent hover:underline disabled:opacity-50"
+              >
+                {healthLoading ? '確認中...' : '再確認'}
+              </button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-sm">
+              <HealthRow label="Supabase 接続" state={health.checks.supabase ? 'good' : 'bad'} />
+              <HealthRow label="認証署名鍵 (AUTH_HMAC_SECRET/SITE_PASSWORD)" state={health.checks.auth_secret ? 'good' : 'bad'} />
+              <HealthRow label="Background Function 認証鍵" state={health.checks.background_secret ? 'good' : 'bad'} />
+              <HealthRow label="Settings 暗号化 master key" state={health.checks.settings_encryption ? 'good' : 'bad'} />
+              <HealthRow label="ユーザー seed 適用済" state={health.checks.users_seeded ? 'good' : 'bad'} />
+              <HealthRow label={`Claude API key: ${KEY_STATE_LABEL[health.checks.claude_api_key].label}`} state={KEY_STATE_LABEL[health.checks.claude_api_key].tone} bare />
+              <HealthRow label={`TLDV API key: ${KEY_STATE_LABEL[health.checks.tldv_api_key].label}`} state={KEY_STATE_LABEL[health.checks.tldv_api_key].tone} bare />
+            </div>
+            {health.issues.length > 0 && (
+              <div className="mt-4 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2">
+                <p className="text-xs font-medium text-yellow-700 mb-1">対応が必要な項目:</p>
+                <ul className="text-xs text-text-secondary space-y-1 list-disc list-inside">
+                  {health.issues.map((iss, i) => (
+                    <li key={i}>{iss}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="text-[10px] text-text-secondary mt-3">
+              version: {health.version}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* DB Warning */}
       {dbWarning && (

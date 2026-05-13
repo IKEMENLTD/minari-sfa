@@ -507,9 +507,16 @@ export default function MeetingDetailPage() {
       });
       const json = await res.json();
       if (!res.ok || json.error) {
-        setSummarizeMsg(json.error ?? 'AI要約の生成に失敗しました');
+        // 500 系: 設定不足の可能性高い → /settings へ誘導
+        const base = json.error ?? 'AI要約の生成に失敗しました';
+        const isConfigError = res.status >= 500 || /api.?key|設定|secret|hmac/i.test(base);
+        setSummarizeMsg(
+          isConfigError
+            ? `${base}\n→ 「設定」画面でAPIキー/環境変数の状態を確認してください`
+            : base
+        );
         setSummarizing(false);
-        setTimeout(() => setSummarizeMsg(null), 10000);
+        setTimeout(() => setSummarizeMsg(null), 15000);
         return;
       }
 
